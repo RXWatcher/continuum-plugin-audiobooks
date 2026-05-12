@@ -43,7 +43,7 @@ func (s *Store) InsertABSSession(ctx context.Context, sess ABSSession) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO abs_playback_session
 			(id, user_id, book_id, device_id, device_info, play_method, media_player,
-			 start_time, current_time)
+			 start_time, current_time_ms)
 		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7,''), $8, $9)
 	`, sess.ID, sess.UserID, sess.BookID, sess.DeviceID, info, method, sess.MediaPlayer,
 		sess.StartTime, sess.CurrentTime)
@@ -53,11 +53,11 @@ func (s *Store) InsertABSSession(ctx context.Context, sess ABSSession) error {
 	return nil
 }
 
-// UpdateABSSession bumps current_time and last_update.
+// UpdateABSSession bumps current_time_ms and last_update.
 func (s *Store) UpdateABSSession(ctx context.Context, id string, currentTime int) error {
 	res, err := s.pool.Exec(ctx, `
 		UPDATE abs_playback_session
-		SET current_time = $2, last_update = now()
+		SET current_time_ms = $2, last_update = now()
 		WHERE id = $1 AND closed_at IS NULL
 	`, id, currentTime)
 	if err != nil {
@@ -83,7 +83,7 @@ func (s *Store) CloseABSSession(ctx context.Context, id string) error {
 func (s *Store) GetABSSession(ctx context.Context, id string) (ABSSession, error) {
 	row := s.pool.QueryRow(ctx, `
 		SELECT id, user_id, book_id, device_id, device_info, play_method,
-		       COALESCE(media_player,''), start_time, current_time, started_at,
+		       COALESCE(media_player,''), start_time, current_time_ms, started_at,
 		       last_update, closed_at
 		FROM abs_playback_session WHERE id = $1
 	`, id)
@@ -110,7 +110,7 @@ func (s *Store) ListActiveABSSessions(ctx context.Context, limit int) ([]ABSSess
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT id, user_id, book_id, device_id, device_info, play_method,
-		       COALESCE(media_player,''), start_time, current_time, started_at,
+		       COALESCE(media_player,''), start_time, current_time_ms, started_at,
 		       last_update, closed_at
 		FROM abs_playback_session WHERE closed_at IS NULL
 		ORDER BY last_update DESC LIMIT $1

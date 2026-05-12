@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS abs_playback_session (
   play_method   TEXT NOT NULL DEFAULT 'directplay',
   media_player  TEXT,
   start_time    INT NOT NULL DEFAULT 0,
-  current_time  INT NOT NULL DEFAULT 0,
+  current_time_ms INT NOT NULL DEFAULT 0,
   started_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_update   TIMESTAMPTZ NOT NULL DEFAULT now(),
   closed_at     TIMESTAMPTZ
