@@ -1,0 +1,5 @@
+DROP TABLE IF EXISTS request;
+DROP TABLE IF EXISTS rating;
+DROP TABLE IF EXISTS bookmark;
+DROP TABLE IF EXISTS progress;
+DROP TABLE IF EXISTS backend_config;
