@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { api } from '@/api/client';
@@ -15,12 +15,21 @@ import {
 } from '@/components/ui/select';
 import type { BackendConfig } from '@/api/types';
 
+type SecretState =
+  | { status: 'idle' }
+  | { status: 'generating' }
+  | { status: 'ready'; secret: string }
+  | { status: 'error'; message: string };
+
 const MODES = ['proxy', 'cache', 'direct'] as const;
 
 export default function AdminSettings() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ['backend-config'], queryFn: () => api.getBackendConfig() });
   const [form, setForm] = useState<BackendConfig | null>(null);
+  const [secretState, setSecretState] = useState<SecretState>({ status: 'idle' });
+  const [copied, setCopied] = useState(false);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (q.data && !form) setForm(q.data);
@@ -138,6 +147,71 @@ export default function AdminSettings() {
         >
           Rotate ABS signing secret
         </Button>
+      </section>
+
+      <section className="bg-surface space-y-4 rounded-lg border p-6">
+        <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
+          Audiobooks CDN (presigned URL streaming)
+        </h3>
+        <p className="text-sm text-muted-foreground">
+          Generate a shared HMAC signing secret for CDN-presigned streaming URLs. Once generated,
+          paste the value into <strong>this plugin's</strong> <code>cdn_signing_secret</code> config
+          field <strong>and</strong> the <strong>audiobooksdb plugin's</strong>{' '}
+          <code>stream_signing_secret</code> config field. The secret is shown only once — save it
+          before navigating away.
+        </p>
+        <div className="flex flex-wrap items-center gap-3">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={secretState.status === 'generating'}
+            onClick={async () => {
+              setSecretState({ status: 'generating' });
+              setCopied(false);
+              try {
+                const { secret } = await api.adminGenerateStreamingSecret();
+                setSecretState({ status: 'ready', secret });
+              } catch (e) {
+                setSecretState({ status: 'error', message: `${e}` });
+                toast.error(`Failed to generate secret: ${e}`);
+              }
+            }}
+          >
+            {secretState.status === 'generating' ? 'Generating…' : 'Generate streaming secret'}
+          </Button>
+        </div>
+        {secretState.status === 'ready' && (
+          <div className="space-y-2">
+            <Label>Generated secret — copy and save now</Label>
+            <div className="flex gap-2">
+              <Input
+                readOnly
+                value={secretState.secret}
+                className="font-mono text-xs"
+                onFocus={(e) => e.currentTarget.select()}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  navigator.clipboard.writeText(secretState.secret).then(() => {
+                    setCopied(true);
+                    if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+                    copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
+                  });
+                }}
+              >
+                {copied ? 'Copied' : 'Copy'}
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              This value will not be shown again. Store it securely before leaving this page.
+            </p>
+          </div>
+        )}
+        {secretState.status === 'error' && (
+          <p className="text-sm text-destructive">{secretState.message}</p>
+        )}
       </section>
 
       <Button type="submit" disabled={save.isPending}>
