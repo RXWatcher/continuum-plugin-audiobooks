@@ -357,7 +357,7 @@ function LibrarySection({
                     value={library.backend_plugin_id || ''}
                     providers={providers}
                     onChange={(value) => updateLibrary(index, { backend_plugin_id: value })}
-                    placeholder="continuum.audiobooksdb"
+                    placeholder="continuum.local-audiobooks"
                   />
                 </FieldStack>
                 <div className="flex items-end gap-3">

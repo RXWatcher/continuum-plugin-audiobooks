@@ -302,8 +302,8 @@ func (s *Server) handleAdminRevokeToken(w http.ResponseWriter, r *http.Request) 
 
 // handleGenerateStreamingSecret generates a cryptographically-random 32-byte
 // value and returns it base64-encoded. The admin pastes this value into both
-// this plugin's cdn_signing_secret global config and the audiobooksdb plugin's
-// stream_signing_secret config. Nothing is persisted here — the admin is
+// this plugin's cdn_signing_secret global config and the local audiobooks
+// plugin's stream_signing_secret config. Nothing is persisted here — the admin is
 // responsible for saving the value.
 func (s *Server) handleGenerateStreamingSecret(w http.ResponseWriter, r *http.Request) {
 	if _, ok := auth.RequireAdmin(w, r); !ok {

@@ -16,7 +16,7 @@ func TestMintStreamToken_Verifiable(t *testing.T) {
 		t.Fatalf("MintStreamToken: %v", err)
 	}
 	parsed, err := jwt.Parse(tok, func(_ *jwt.Token) (any, error) { return secret, nil },
-		jwt.WithAudience("audiobooksdb"), jwt.WithExpirationRequired())
+		jwt.WithAudience("local_audiobooks"), jwt.WithExpirationRequired())
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}

@@ -75,7 +75,7 @@ route each one to a different installed plugin that provides
 Each presentation library stores:
 
 - Display name and media type.
-- Backend plugin ID, for example `continuum.audiobooksdb` or an internal
+- Backend plugin ID, for example `continuum.local-audiobooks` or an internal
   managed audio provider.
 - Optional backend sub-library ID when the source backend exposes
   `/api/v1/catalog/libraries`.
@@ -89,8 +89,8 @@ libraries can safely contain the same backend book ID.
 ## Backend Integration
 
 The portal expects one or more audiobook backend providers to expose catalog,
-cover, and streaming behavior. For local M4B libraries, use
-`continuum.audiobooksdb`.
+cover, and streaming behavior. For local M4B/MP3 libraries, use
+`continuum.local-audiobooks`.
 
 The portal listens for backend state changes and also runs periodic
 reconciliation so missed events do not permanently strand requests.
