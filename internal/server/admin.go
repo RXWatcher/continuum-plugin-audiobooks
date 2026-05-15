@@ -9,6 +9,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/auth"
+	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/backend"
 	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/store"
 )
 
@@ -17,6 +18,9 @@ import (
 func (s *Server) mountAdminRoutes(r chi.Router) {
 	r.Get("/admin/backend-config", s.handleGetBackendConfig)
 	r.Patch("/admin/backend-config", s.handleUpdateBackendConfig)
+	r.Get("/admin/libraries", s.handleAdminListLibraries)
+	r.Put("/admin/libraries", s.handleAdminReplaceLibraries)
+	r.Get("/admin/backend-libraries", s.handleAdminBackendLibraries)
 	r.Get("/admin/requests", s.handleAdminListRequests)
 	r.Post("/admin/requests/{id}/approve", s.handleAdminApproveRequest)
 	r.Post("/admin/requests/{id}/deny", s.handleAdminDenyRequest)
@@ -38,7 +42,19 @@ func (s *Server) handleGetBackendConfig(w http.ResponseWriter, r *http.Request) 
 	}
 	// Don't leak the JWT secret over the wire.
 	cfg.ABSJWTSecret = nil
-	writeJSON(w, http.StatusOK, cfg)
+	libs, _ := s.d.Store.ListPortalLibraries(r.Context(), false)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"target_backend_plugin_id":   cfg.TargetBackendPluginID,
+		"auto_approve_requests":      cfg.AutoApproveRequests,
+		"streaming_mode":             cfg.StreamingMode,
+		"cache_dir":                  cfg.CacheDir,
+		"cache_max_size_gb":          cfg.CacheMaxSizeGB,
+		"cache_download_concurrency": cfg.CacheDownloadConcurrency,
+		"path_remappings":            cfg.PathRemappings,
+		"abs_access_token_ttl_hours": cfg.ABSAccessTTLHours,
+		"abs_refresh_token_ttl_days": cfg.ABSRefreshTTLDays,
+		"libraries":                  libs,
+	})
 }
 
 type backendConfigPayload struct {
@@ -109,6 +125,54 @@ func (s *Server) handleUpdateBackendConfig(w http.ResponseWriter, r *http.Reques
 	}
 	cur.ABSJWTSecret = nil
 	writeJSON(w, http.StatusOK, cur)
+}
+
+func (s *Server) handleAdminListLibraries(w http.ResponseWriter, r *http.Request) {
+	if _, ok := auth.RequireAdmin(w, r); !ok {
+		return
+	}
+	libs, err := s.d.Store.ListPortalLibraries(r.Context(), false)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": libs})
+}
+
+func (s *Server) handleAdminReplaceLibraries(w http.ResponseWriter, r *http.Request) {
+	if _, ok := auth.RequireAdmin(w, r); !ok {
+		return
+	}
+	var body struct {
+		Items []store.PortalLibrary `json:"items"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid body")
+		return
+	}
+	if err := s.d.Store.ReplacePortalLibraries(r.Context(), body.Items); err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+}
+
+func (s *Server) handleAdminBackendLibraries(w http.ResponseWriter, r *http.Request) {
+	id, ok := auth.RequireAdmin(w, r)
+	if !ok {
+		return
+	}
+	backendID := r.URL.Query().Get("backend_plugin_id")
+	if backendID == "" {
+		writeJSON(w, http.StatusOK, map[string]any{"items": []backend.LibraryInfo{}})
+		return
+	}
+	items, err := s.d.Backend.ListLibraries(r.Context(), id.Token, backendID)
+	if err != nil {
+		writeJSON(w, http.StatusOK, map[string]any{"items": []backend.LibraryInfo{}})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"items": items})
 }
 
 func (s *Server) handleAdminListRequests(w http.ResponseWriter, r *http.Request) {

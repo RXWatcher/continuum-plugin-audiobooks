@@ -18,6 +18,13 @@ const (
 	ServerSourceTag    = "continuum"
 )
 
+func libraryIDString(id int64) string {
+	if id > 0 {
+		return strconv.FormatInt(id, 10)
+	}
+	return VirtualLibraryID
+}
+
 // AuthorObj is the ABS-shaped author reference. ABS clients filter by id;
 // some screens render only name.
 type AuthorObj struct {
@@ -129,7 +136,7 @@ func ToLibraryItem(d backend.AudiobookDetail, contentURLFn func(int) string) Lib
 
 	return LibraryItem{
 		ID:        d.ID,
-		LibraryID: VirtualLibraryID,
+		LibraryID: libraryIDString(d.LibraryID),
 		FolderID:  VirtualFolderID,
 		MediaType: LibraryMediaType,
 		Media: LibraryItemMedia{
@@ -150,7 +157,7 @@ func ToLibraryItem(d backend.AudiobookDetail, contentURLFn func(int) string) Lib
 func ToLibrarySummary(s backend.AudiobookSummary) LibraryItem {
 	return LibraryItem{
 		ID:        s.ID,
-		LibraryID: VirtualLibraryID,
+		LibraryID: libraryIDString(s.LibraryID),
 		FolderID:  VirtualFolderID,
 		MediaType: LibraryMediaType,
 		Media: LibraryItemMedia{

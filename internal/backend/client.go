@@ -20,11 +20,12 @@ func NewClient(host *HostClient) *Client { return &Client{host: host} }
 
 // ListParams mirrors the query shape for /catalog endpoints.
 type ListParams struct {
-	Cursor string
-	Limit  int
-	Sort   string
-	Order  string
-	Query  string
+	Cursor    string
+	Limit     int
+	Sort      string
+	Order     string
+	Query     string
+	LibraryID int64
 }
 
 func (p ListParams) toQuery() string {
@@ -44,11 +45,30 @@ func (p ListParams) toQuery() string {
 	if p.Query != "" {
 		q.Set("q", p.Query)
 	}
+	if p.LibraryID > 0 {
+		q.Set("library_id", strconv.FormatInt(p.LibraryID, 10))
+	}
 	enc := q.Encode()
 	if enc == "" {
 		return ""
 	}
 	return "?" + enc
+}
+
+// ListLibraries calls GET /api/v1/catalog/libraries on backends that expose
+// sub-library metadata. Older backends may 404; callers treat that as empty.
+func (c *Client) ListLibraries(ctx context.Context, bearer, installID string) ([]LibraryInfo, error) {
+	body, err := c.host.Get(ctx, bearer, installID, "/api/v1/catalog/libraries")
+	if err != nil {
+		return nil, err
+	}
+	var out struct {
+		Items []LibraryInfo `json:"items"`
+	}
+	if err := json.Unmarshal(body, &out); err != nil {
+		return nil, fmt.Errorf("decode libraries: %w", err)
+	}
+	return out.Items, nil
 }
 
 // ListCatalog calls GET /api/v1/catalog on the backend.

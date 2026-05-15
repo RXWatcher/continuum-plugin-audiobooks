@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router';
+import { Link, useSearchParams } from 'react-router';
 import { api } from '@/api/client';
 import AudiobookGrid from '@/components/AudiobookGrid';
 import SearchBar from '@/components/SearchBar';
@@ -15,14 +15,21 @@ export default function Home() {
 }
 
 function Shelves() {
+  const [params] = useSearchParams();
+  const libraryID = Number(params.get('library_id') || 0) || undefined;
+  const libraries = useQuery({
+    queryKey: ['libraries'],
+    queryFn: () => api.listLibraries(),
+  });
+
   const progress = useQuery({
-    queryKey: ['progress', 'recent'],
+    queryKey: ['progress', 'recent', libraryID],
     queryFn: () => api.listMyProgress(12),
   });
 
   const recent = useQuery({
-    queryKey: ['audiobooks', 'recent'],
-    queryFn: () => api.listAudiobooks({ sort: 'added', order: 'desc', limit: 24 }),
+    queryKey: ['audiobooks', 'recent', libraryID],
+    queryFn: () => api.listAudiobooks({ sort: 'added', order: 'desc', limit: 24, library_id: libraryID }),
   });
 
   return (
@@ -33,6 +40,23 @@ function Shelves() {
           <SearchBar />
         </div>
       </div>
+
+      {libraries.data && libraries.data.items.length > 1 && (
+        <div className="flex flex-wrap gap-2">
+          <LibraryPill to="/" active={!libraryID}>
+            All
+          </LibraryPill>
+          {libraries.data.items.map((library) => (
+            <LibraryPill
+              key={library.id}
+              to={`/?library_id=${library.id}`}
+              active={library.id === libraryID}
+            >
+              {library.name}
+            </LibraryPill>
+          ))}
+        </div>
+      )}
 
       {progress.data?.items && progress.data.items.length > 0 && (
         <section>
@@ -61,9 +85,11 @@ function Shelves() {
 }
 
 function SearchResults({ q }: { q: string }) {
+  const [params] = useSearchParams();
+  const libraryID = Number(params.get('library_id') || 0) || undefined;
   const results = useQuery({
-    queryKey: ['audiobooks', 'search', q],
-    queryFn: () => api.searchAudiobooks(q),
+    queryKey: ['audiobooks', 'search', q, libraryID],
+    queryFn: () => api.searchAudiobooks(q, libraryID),
   });
 
   return (
@@ -80,5 +106,28 @@ function SearchResults({ q }: { q: string }) {
         empty={`No results for "${q}". Don't see it? Try requesting it from any book detail page.`}
       />
     </div>
+  );
+}
+
+function LibraryPill({
+  to,
+  active,
+  children,
+}: {
+  to: string;
+  active?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      to={to}
+      className={`rounded-full border px-3 py-1 text-sm transition-colors ${
+        active
+          ? 'border-primary bg-primary/10 text-primary'
+          : 'border-border bg-background text-muted-foreground hover:bg-surface-hover hover:text-foreground'
+      }`}
+    >
+      {children}
+    </Link>
   );
 }

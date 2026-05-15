@@ -11,6 +11,8 @@ data to backend plugins.
 - Exposes REST APIs for browsing, playback sessions, requests, and client
   integrations.
 - Provides public and authenticated Audiobookshelf-compatible routes.
+- Lets admins define multiple user-facing presentation libraries, each backed
+  by a different audiobook source plugin or backend sub-library.
 - Watches backend request/import events.
 - Reconciles request state, closes idle sessions, and evicts cached audio.
 - Supports optional standalone HTTP serving for reverse-proxied client-app
@@ -29,6 +31,9 @@ data to backend plugins.
 | Route | Access | Purpose |
 |---|---|---|
 | `/api/v1/*` | authenticated | Portal API. |
+| `/api/v1/libraries` | authenticated | Enabled presentation libraries for the user portal. |
+| `/api/v1/admin/libraries` | admin | Create, update, reorder, enable, and remove presentation libraries. |
+| `/api/v1/admin/backend-libraries` | admin | Discover source-provider sub-libraries when a backend exposes them. |
 | `/abs/public/*` | public | Public ABS-compatible assets. |
 | `/abs/api/login` | public | ABS-compatible login. |
 | `/abs/api/auth/refresh` | public | ABS-compatible token refresh. |
@@ -60,6 +65,27 @@ CREATE SCHEMA audiobooks AUTHORIZATION plugin_audiobooks;
 GRANT CONNECT ON DATABASE continuum TO plugin_audiobooks;
 ```
 
+## Presentation Libraries
+
+The portal separates the user-facing library from the backend provider. An
+admin can define libraries such as `Audiobooks`, `Podcasts`, or `Lectures` and
+route each one to a different installed plugin that provides
+`audiobook_backend.v1`.
+
+Each presentation library stores:
+
+- Display name and media type.
+- Backend plugin ID, for example `continuum.audiobooksdb` or an internal
+  managed audio provider.
+- Optional backend sub-library ID when the source backend exposes
+  `/api/v1/catalog/libraries`.
+- Enabled state and sort order.
+
+Catalog, search, browse, detail, stream, and Audiobookshelf-compatible routes
+all carry the selected presentation library through to the backend. Public item
+IDs are encoded with the presentation library ID so two different source
+libraries can safely contain the same backend book ID.
+
 ## Backend Integration
 
 The portal expects one or more audiobook backend providers to expose catalog,
@@ -84,7 +110,7 @@ secret must match the backend stream verification secret.
 
 ```bash
 go test ./...
-go build -buildvcs=false -o continuum-plugin-audiobooks ./cmd/continuum-plugin-audiobooks
+make build
 ```
 
 If frontend assets change, build the web project before packaging.
@@ -92,6 +118,8 @@ If frontend assets change, build the web project before packaging.
 ## Operational Notes
 
 - Keep the portal and backend cache/signing settings aligned.
+- Configure at least one enabled presentation library before exposing the
+  portal to users.
 - Use HTTPS in front of standalone client-facing routes.
 - The scheduled reconciler is designed to be idempotent.
 - Monitor request failure counts after changing backend provider configuration.

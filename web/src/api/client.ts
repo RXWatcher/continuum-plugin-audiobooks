@@ -10,6 +10,9 @@ import type {
   Bookmark,
   Collection,
   CollectionItem,
+  InstalledBackend,
+  InstalledCapability,
+  LibraryInfo,
   NarratorSummary,
   PageEnvelope,
   Progress,
@@ -50,6 +53,7 @@ export interface ListQuery {
   sort?: string;
   order?: string;
   q?: string;
+  library_id?: number;
 }
 
 function toQuery(p?: ListQuery): string {
@@ -60,6 +64,7 @@ function toQuery(p?: ListQuery): string {
   if (p.sort) q.set('sort', p.sort);
   if (p.order) q.set('order', p.order);
   if (p.q) q.set('q', p.q);
+  if (p.library_id) q.set('library_id', String(p.library_id));
   const enc = q.toString();
   return enc ? `?${enc}` : '';
 }
@@ -71,10 +76,15 @@ export const api = {
       jsonOrThrow<PageEnvelope<AudiobookSummary>>,
     ),
 
-  searchAudiobooks: (q: string) =>
-    authedFetch(`${apiBase()}/audiobooks/search?q=${encodeURIComponent(q)}`).then(
+  searchAudiobooks: (q: string, libraryID?: number) =>
+    authedFetch(
+      `${apiBase()}/audiobooks/search${toQuery({ q, library_id: libraryID })}`,
+    ).then(
       jsonOrThrow<PageEnvelope<AudiobookSummary>>,
     ),
+
+  listLibraries: () =>
+    authedFetch(`${apiBase()}/libraries`).then(jsonOrThrow<{ items: LibraryInfo[] }>),
 
   getAudiobook: (id: string) =>
     authedFetch(`${apiBase()}/audiobooks/${encodeURIComponent(id)}`).then(
@@ -224,6 +234,21 @@ export const api = {
       body: JSON.stringify(body),
     }).then(jsonOrThrow<BackendConfig>),
 
+  adminListLibraries: () =>
+    authedFetch(`${apiBase()}/admin/libraries`).then(jsonOrThrow<{ items: LibraryInfo[] }>),
+
+  adminReplaceLibraries: (items: LibraryInfo[]) =>
+    authedFetch(`${apiBase()}/admin/libraries`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ items }),
+    }).then(noContentOrThrow),
+
+  adminBackendLibraries: (backendPluginID: string) =>
+    authedFetch(
+      `${apiBase()}/admin/backend-libraries?backend_plugin_id=${encodeURIComponent(backendPluginID)}`,
+    ).then(jsonOrThrow<{ items: LibraryInfo[] }>),
+
   adminListRequests: (status: string) =>
     authedFetch(`${apiBase()}/admin/requests?status=${encodeURIComponent(status)}`).then(
       jsonOrThrow<{ items: UserRequest[] }>,
@@ -266,3 +291,48 @@ export const api = {
 };
 
 export const _internals = { apiBase };
+
+function audiobookBackendCapability(capabilities: InstalledCapability[]): InstalledCapability | undefined {
+  return capabilities.find((cap) => cap.type === 'audiobook_backend.v1');
+}
+
+export async function fetchInstalledBackends(): Promise<InstalledBackend[]> {
+  const res = await fetch('/api/v1/admin/plugins/installations', {
+    headers: authHeaders(),
+    credentials: 'include',
+  });
+  if (!res.ok) return [];
+  const body = await res.json();
+  const installations = Array.isArray(body) ? body : body.installations || [];
+  return installations
+    .filter((i: { enabled: boolean; capabilities?: InstalledCapability[] }) => {
+      const capabilities = i.capabilities ?? [];
+      return i.enabled && !!audiobookBackendCapability(capabilities);
+    })
+    .map(
+      (i: {
+        id: number;
+        plugin_id: string;
+        display_name?: string;
+        enabled: boolean;
+        capabilities?: InstalledCapability[];
+        metadata?: Record<string, unknown>;
+      }) => {
+        const capabilities = i.capabilities ?? [];
+        const audiobookBackend = audiobookBackendCapability(capabilities);
+        return {
+          id: i.id,
+          plugin_id: i.plugin_id,
+          enabled: i.enabled,
+          capabilities,
+          audiobook_backend: audiobookBackend,
+          display_name:
+            audiobookBackend?.display_name ||
+            i.display_name ||
+            (typeof i.metadata?.display_name === 'string' ? i.metadata.display_name : undefined) ||
+            i.plugin_id,
+          summary: audiobookBackend?.description,
+        };
+      },
+    );
+}

@@ -37,6 +37,9 @@ type AudiobookSummary struct {
 	CoverPath   string      `json:"cover_path,omitempty"`
 	AddedAtMs   int64       `json:"added_at_ms,omitempty"`
 	UpdatedAtMs int64       `json:"updated_at_ms,omitempty"`
+	LibraryID   int64       `json:"library_id,omitempty"`
+	LibraryName string      `json:"library_name,omitempty"`
+	MediaType   string      `json:"media_type,omitempty"`
 }
 
 // AudiobookFile describes one streamable file in an audiobook.
@@ -100,4 +103,10 @@ type RequestSnapshot struct {
 	ExternalID string `json:"external_id"`
 	Status     string `json:"status"`
 	Error      string `json:"error,omitempty"`
+}
+
+type LibraryInfo struct {
+	ID        int64  `json:"id"`
+	Name      string `json:"name"`
+	MediaType string `json:"media_type,omitempty"`
 }

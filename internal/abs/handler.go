@@ -14,6 +14,7 @@ import (
 	"github.com/oklog/ulid/v2"
 
 	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/backend"
+	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/bookref"
 	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/cdn"
 	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/store"
 )
@@ -159,6 +160,104 @@ func absAuthFrom(r *http.Request) (ctxAuth, bool) {
 	return a, ok
 }
 
+func absLibraryID(lib store.PortalLibrary) string {
+	if lib.ID > 0 {
+		return strconv.FormatInt(lib.ID, 10)
+	}
+	return VirtualLibraryID
+}
+
+func absLibraryMap(lib store.PortalLibrary) map[string]any {
+	name := lib.Name
+	if strings.TrimSpace(name) == "" {
+		name = VirtualLibraryName
+	}
+	return map[string]any{
+		"id":        absLibraryID(lib),
+		"name":      name,
+		"mediaType": LibraryMediaType,
+	}
+}
+
+func backendLibraryID(lib store.PortalLibrary) int64 {
+	if lib.BackendLibraryID == nil {
+		return 0
+	}
+	return *lib.BackendLibraryID
+}
+
+func (h *Handler) portalLibraries(ctx context.Context, enabledOnly bool) []store.PortalLibrary {
+	if h.store == nil {
+		return nil
+	}
+	libs, err := h.store.ListPortalLibraries(ctx, enabledOnly)
+	if err == nil && len(libs) > 0 {
+		return libs
+	}
+	cfg, err := h.store.GetBackendConfig(ctx)
+	if err != nil || cfg.TargetBackendPluginID == "" {
+		return nil
+	}
+	return []store.PortalLibrary{{
+		Name:            VirtualLibraryName,
+		MediaType:       "audiobook",
+		BackendPluginID: cfg.TargetBackendPluginID,
+		Enabled:         true,
+	}}
+}
+
+func (h *Handler) defaultPortalLibrary(ctx context.Context) (store.PortalLibrary, error) {
+	if h.store != nil {
+		if lib, err := h.store.DefaultPortalLibrary(ctx); err == nil {
+			return lib, nil
+		}
+	}
+	libs := h.portalLibraries(ctx, true)
+	if len(libs) > 0 {
+		return libs[0], nil
+	}
+	return store.PortalLibrary{}, store.ErrNotFound
+}
+
+func (h *Handler) portalLibraryFromABSID(ctx context.Context, id string) (store.PortalLibrary, error) {
+	if strings.TrimSpace(id) == "" || id == VirtualLibraryID {
+		return h.defaultPortalLibrary(ctx)
+	}
+	n, err := strconv.ParseInt(id, 10, 64)
+	if err != nil || n <= 0 {
+		return store.PortalLibrary{}, store.ErrNotFound
+	}
+	return h.store.GetPortalLibrary(ctx, n)
+}
+
+func (h *Handler) portalLibraryForBookRef(ctx context.Context, ref string) (store.PortalLibrary, string, string, error) {
+	libraryID, backendBookID, encoded := bookref.Decode(ref)
+	lib, err := h.defaultPortalLibrary(ctx)
+	if libraryID > 0 {
+		lib, err = h.store.GetPortalLibrary(ctx, libraryID)
+	}
+	if err != nil {
+		return store.PortalLibrary{}, "", "", err
+	}
+	if !encoded {
+		ref = bookref.Encode(lib.ID, backendBookID)
+	}
+	return lib, backendBookID, ref, nil
+}
+
+func withPortalLibrarySummary(s backend.AudiobookSummary, lib store.PortalLibrary) backend.AudiobookSummary {
+	s.ID = bookref.Encode(lib.ID, s.ID)
+	s.LibraryID = lib.ID
+	s.LibraryName = lib.Name
+	s.MediaType = lib.MediaType
+	return s
+}
+
+func withPortalLibraryDetail(d backend.AudiobookDetail, lib store.PortalLibrary) backend.AudiobookDetail {
+	d.AudiobookSummary = withPortalLibrarySummary(d.AudiobookSummary, lib)
+	return d
+}
+
 // ---------- Handlers ----------
 
 func (h *Handler) handlePing(w http.ResponseWriter, _ *http.Request) {
@@ -175,9 +274,9 @@ func (h *Handler) handleInit(w http.ResponseWriter, _ *http.Request) {
 
 func (h *Handler) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
-		"isInit":      true,
-		"language":    "en-us",
-		"app":         ServerSourceTag,
+		"isInit":        true,
+		"language":      "en-us",
+		"app":           ServerSourceTag,
 		"serverVersion": ServerVersion,
 	})
 }
@@ -257,15 +356,24 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	libs := h.portalLibraries(r.Context(), true)
+	libraryMaps := make([]map[string]any, 0, len(libs))
+	defaultLibraryID := VirtualLibraryID
+	for i, lib := range libs {
+		if i == 0 {
+			defaultLibraryID = absLibraryID(lib)
+		}
+		libraryMaps = append(libraryMaps, absLibraryMap(lib))
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user": map[string]any{
 			"id":               userID,
 			"username":         userID,
-			"defaultLibraryId": VirtualLibraryID,
+			"defaultLibraryId": defaultLibraryID,
 		},
 		"accessToken":  access,
 		"refreshToken": refresh,
-		"libraries":    []map[string]any{{"id": VirtualLibraryID, "name": VirtualLibraryName}},
+		"libraries":    libraryMaps,
 	})
 }
 
@@ -330,31 +438,36 @@ func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) handleMe(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
+	lib, _ := h.defaultPortalLibrary(r.Context())
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id":               a.UserID,
 		"username":         a.UserID,
-		"defaultLibraryId": VirtualLibraryID,
+		"defaultLibraryId": absLibraryID(lib),
 	})
 }
 
-func (h *Handler) handleLibraries(w http.ResponseWriter, _ *http.Request) {
+func (h *Handler) handleLibraries(w http.ResponseWriter, r *http.Request) {
+	libs := h.portalLibraries(r.Context(), true)
+	out := make([]map[string]any, 0, len(libs))
+	for _, lib := range libs {
+		out = append(out, absLibraryMap(lib))
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"libraries": []map[string]any{
-			{"id": VirtualLibraryID, "name": VirtualLibraryName, "mediaType": LibraryMediaType},
-		},
+		"libraries": out,
 	})
 }
 
 func (h *Handler) handleLibraryDetail(w http.ResponseWriter, r *http.Request) {
+	lib, err := h.portalLibraryFromABSID(r.Context(), chi.URLParam(r, "id"))
+	if err != nil {
+		http.Error(w, "library not found", http.StatusNotFound)
+		return
+	}
 	resp := map[string]any{
-		"library": map[string]any{
-			"id":        VirtualLibraryID,
-			"name":      VirtualLibraryName,
-			"mediaType": LibraryMediaType,
-		},
+		"library": absLibraryMap(lib),
 	}
 	if includeHas(r.URL.Query().Get("include"), "filterdata") {
-		resp["filterdata"] = h.collectFilterData(r)
+		resp["filterdata"] = h.collectFilterData(r, lib)
 		// Spec-shaped, optional extras: zero "issues" + zero playlists keep
 		// the response stable for clients that read them.
 		resp["issues"] = 0
@@ -383,9 +496,8 @@ func includeHas(raw, want string) bool {
 // Drift note: when the backend is unreachable we return empty arrays
 // (never null) so the client doesn't crash on iteration. Same approach
 // for the personalized shelves below.
-func (h *Handler) collectFilterData(r *http.Request) map[string]any {
+func (h *Handler) collectFilterData(r *http.Request, lib store.PortalLibrary) map[string]any {
 	a, _ := absAuthFrom(r)
-	target, _, err := h.targetFn(r.Context())
 	empty := map[string]any{
 		"authors":    []AuthorObj{},
 		"series":     []SeriesObj{},
@@ -395,13 +507,14 @@ func (h *Handler) collectFilterData(r *http.Request) map[string]any {
 		"languages":  []string{},
 		"tags":       []string{},
 	}
-	if err != nil || target == "" {
+	if lib.BackendPluginID == "" {
 		return empty
 	}
 	out := empty
+	params := backend.ListParams{Limit: 500, LibraryID: backendLibraryID(lib)}
 
 	// Authors — IDs supplied by the backend (slug-based).
-	if authors, err := h.backend.BrowseAuthors(r.Context(), a.Token, target, backend.ListParams{Limit: 500}); err == nil {
+	if authors, err := h.backend.BrowseAuthors(r.Context(), a.Token, lib.BackendPluginID, params); err == nil {
 		refs := make([]AuthorObj, 0, len(authors.Items))
 		for _, s := range authors.Items {
 			refs = append(refs, AuthorObj{ID: s.ID, Name: s.Name})
@@ -410,7 +523,7 @@ func (h *Handler) collectFilterData(r *http.Request) map[string]any {
 	} else {
 		h.logger.Warn("filterdata: browse authors", "err", err)
 	}
-	if series, err := h.backend.BrowseSeries(r.Context(), a.Token, target, backend.ListParams{Limit: 500}); err == nil {
+	if series, err := h.backend.BrowseSeries(r.Context(), a.Token, lib.BackendPluginID, params); err == nil {
 		refs := make([]SeriesObj, 0, len(series.Items))
 		for _, s := range series.Items {
 			refs = append(refs, SeriesObj{ID: s.ID, Name: s.Name})
@@ -419,7 +532,7 @@ func (h *Handler) collectFilterData(r *http.Request) map[string]any {
 	} else {
 		h.logger.Warn("filterdata: browse series", "err", err)
 	}
-	if narrators, err := h.backend.BrowseNarrators(r.Context(), a.Token, target, backend.ListParams{Limit: 500}); err == nil {
+	if narrators, err := h.backend.BrowseNarrators(r.Context(), a.Token, lib.BackendPluginID, params); err == nil {
 		names := make([]string, 0, len(narrators.Items))
 		for _, s := range narrators.Items {
 			names = append(names, s.Name)
@@ -437,8 +550,8 @@ func (h *Handler) collectFilterData(r *http.Request) map[string]any {
 
 func (h *Handler) handleLibraryItems(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
-	target, _, err := h.targetFn(r.Context())
-	if err != nil || target == "" {
+	lib, err := h.portalLibraryFromABSID(r.Context(), chi.URLParam(r, "id"))
+	if err != nil || lib.BackendPluginID == "" {
 		http.Error(w, "no backend configured", http.StatusPreconditionFailed)
 		return
 	}
@@ -448,49 +561,51 @@ func (h *Handler) handleLibraryItems(w http.ResponseWriter, r *http.Request) {
 			p.Limit = n
 		}
 	}
-	out, err := h.backend.ListCatalog(r.Context(), a.Token, target, p)
+	p.LibraryID = backendLibraryID(lib)
+	out, err := h.backend.ListCatalog(r.Context(), a.Token, lib.BackendPluginID, p)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
 	results := make([]LibraryItem, len(out.Items))
 	for i, s := range out.Items {
-		results[i] = ToLibrarySummary(s)
+		results[i] = ToLibrarySummary(withPortalLibrarySummary(s, lib))
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"results": results, "total": out.Total})
 }
 
 func (h *Handler) handleItem(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
-	target, _, err := h.targetFn(r.Context())
-	if err != nil || target == "" {
+	lib, backendBookID, encodedBookID, err := h.portalLibraryForBookRef(r.Context(), chi.URLParam(r, "id"))
+	if err != nil || lib.BackendPluginID == "" {
 		http.Error(w, "no backend configured", http.StatusPreconditionFailed)
 		return
 	}
-	id := chi.URLParam(r, "id")
-	d, err := h.backend.GetDetail(r.Context(), a.Token, target, id)
+	d, err := h.backend.GetDetail(r.Context(), a.Token, lib.BackendPluginID, backendBookID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
+	d = withPortalLibraryDetail(d, lib)
 	// The contentUrl for each track is the bearer-protected web stream URL.
 	// Drift from spec: spec wanted a session-scoped URL; we'd need to mint
 	// a session JWT here. For now, use bearer-protected web stream.
 	contentURLFn := func(idx int) string {
-		return h.backend.StreamURL(target, id, idx)
+		return h.backend.StreamURL(lib.BackendPluginID, backendBookID, idx)
 	}
-	writeJSON(w, http.StatusOK, ToLibraryItem(d, contentURLFn))
+	item := ToLibraryItem(d, contentURLFn)
+	item.ID = encodedBookID
+	writeJSON(w, http.StatusOK, item)
 }
 
 func (h *Handler) handleItemCover(w http.ResponseWriter, r *http.Request) {
-	target, _, err := h.targetFn(r.Context())
-	if err != nil || target == "" {
+	lib, backendBookID, _, err := h.portalLibraryForBookRef(r.Context(), chi.URLParam(r, "id"))
+	if err != nil || lib.BackendPluginID == "" {
 		http.Error(w, "no backend configured", http.StatusPreconditionFailed)
 		return
 	}
-	id := chi.URLParam(r, "id")
 	size := r.URL.Query().Get("size")
-	http.Redirect(w, r, h.backend.CoverURL(target, id, size), http.StatusFound)
+	http.Redirect(w, r, h.backend.CoverURL(lib.BackendPluginID, backendBookID, size), http.StatusFound)
 }
 
 type playPayload struct {
@@ -500,30 +615,34 @@ type playPayload struct {
 
 func (h *Handler) handlePlay(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
-	target, cfg, err := h.targetFn(r.Context())
-	if err != nil || target == "" {
+	_, cfg, err := h.targetFn(r.Context())
+	if err != nil {
+		http.Error(w, "config unavailable", http.StatusInternalServerError)
+		return
+	}
+	lib, backendBookID, encodedBookID, err := h.portalLibraryForBookRef(r.Context(), chi.URLParam(r, "id"))
+	if err != nil || lib.BackendPluginID == "" {
 		http.Error(w, "no backend configured", http.StatusPreconditionFailed)
 		return
 	}
-	bookID := chi.URLParam(r, "id")
 	var p playPayload
 	_ = json.NewDecoder(r.Body).Decode(&p)
 	deviceID, _ := p.DeviceInfo["deviceId"].(string)
 	if deviceID == "" {
 		deviceID = "unknown"
 	}
-	d, err := h.backend.GetDetail(r.Context(), a.Token, target, bookID)
+	d, err := h.backend.GetDetail(r.Context(), a.Token, lib.BackendPluginID, backendBookID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
 	sessionID := ulid.Make().String()
 	sess := store.ABSSession{
-		ID:         sessionID,
-		UserID:     a.UserID,
-		BookID:     bookID,
-		DeviceID:   deviceID,
-		DeviceInfo: p.DeviceInfo,
+		ID:          sessionID,
+		UserID:      a.UserID,
+		BookID:      encodedBookID,
+		DeviceID:    deviceID,
+		DeviceInfo:  p.DeviceInfo,
 		MediaPlayer: p.MediaPlayer,
 	}
 	if err := h.store.InsertABSSession(r.Context(), sess); err != nil {
@@ -550,10 +669,10 @@ func (h *Handler) handlePlay(w http.ResponseWriter, r *http.Request) {
 	for i, f := range d.Files {
 		var trackURL string
 		if useCDN {
-			tok, _ := cdn.MintStreamToken(cdnSecret, a.UserID, bookID, f.Index, 5*time.Minute)
-			trackURL = cdn.PresignedURL(cdnHostname, bookID, f.Index, tok)
+			tok, _ := cdn.MintStreamToken(cdnSecret, a.UserID, encodedBookID, f.Index, 5*time.Minute)
+			trackURL = cdn.PresignedURL(cdnHostname, encodedBookID, f.Index, tok)
 		} else {
-			tok, _ := IssueSessionToken(cfg.ABSJWTSecret, a.UserID, sessionID, bookID, f.Index, 6*time.Hour)
+			tok, _ := IssueSessionToken(cfg.ABSJWTSecret, a.UserID, sessionID, encodedBookID, f.Index, 6*time.Hour)
 			trackURL = hostBase + "/api/v1/plugins/" + installID +
 				"/abs/public/session/" + sessionID + "/track/" + strconv.Itoa(f.Index) +
 				"?token=" + tok
@@ -567,10 +686,10 @@ func (h *Handler) handlePlay(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"id":             sessionID,
-		"libraryItemId":  bookID,
-		"audioTracks":    tracks,
-		"mediaPlayer":    p.MediaPlayer,
+		"id":            sessionID,
+		"libraryItemId": encodedBookID,
+		"audioTracks":   tracks,
+		"mediaPlayer":   p.MediaPlayer,
 	})
 }
 
@@ -613,16 +732,16 @@ func (h *Handler) handleSessionSync(w http.ResponseWriter, r *http.Request) {
 	if cdnHostname != "" && cdnSecretB64 != "" && err == nil {
 		cdnSecret, decErr := base64.StdEncoding.DecodeString(cdnSecretB64)
 		if decErr == nil && len(cdnSecret) > 0 {
-			target, _, targetErr := h.targetFn(r.Context())
-			if targetErr == nil && target != "" {
-				d, detailErr := h.backend.GetDetail(r.Context(), a.Token, target, sess.BookID)
+			lib, backendBookID, encodedBookID, targetErr := h.portalLibraryForBookRef(r.Context(), sess.BookID)
+			if targetErr == nil && lib.BackendPluginID != "" {
+				d, detailErr := h.backend.GetDetail(r.Context(), a.Token, lib.BackendPluginID, backendBookID)
 				if detailErr == nil {
 					tracks := make([]AudioTrack, len(d.Files))
 					for i, f := range d.Files {
-						tok, _ := cdn.MintStreamToken(cdnSecret, a.UserID, sess.BookID, f.Index, 5*time.Minute)
+						tok, _ := cdn.MintStreamToken(cdnSecret, a.UserID, encodedBookID, f.Index, 5*time.Minute)
 						tracks[i] = AudioTrack{
 							Index:      f.Index,
-							ContentURL: cdn.PresignedURL(cdnHostname, sess.BookID, f.Index, tok),
+							ContentURL: cdn.PresignedURL(cdnHostname, encodedBookID, f.Index, tok),
 							MimeType:   f.MimeType,
 							Duration:   float64(f.DurationSeconds),
 							Codec:      f.Format,
@@ -658,7 +777,7 @@ func (h *Handler) handlePublicTrack(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "token required", http.StatusUnauthorized)
 		return
 	}
-	target, cfg, err := h.targetFn(r.Context())
+	_, cfg, err := h.targetFn(r.Context())
 	if err != nil {
 		http.Error(w, "config unavailable", http.StatusInternalServerError)
 		return
@@ -673,10 +792,15 @@ func (h *Handler) handlePublicTrack(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "session closed or missing", http.StatusGone)
 		return
 	}
+	lib, backendBookID, _, err := h.portalLibraryForBookRef(r.Context(), sess.BookID)
+	if err != nil || lib.BackendPluginID == "" {
+		http.Error(w, "no backend configured", http.StatusPreconditionFailed)
+		return
+	}
 	// Redirect to the backend's stream URL. (The proxy will validate the
 	// inbound bearer the audio client would otherwise need — here we let the
 	// session-token-already-verified state stand in.)
-	http.Redirect(w, r, h.backend.StreamURL(target, sess.BookID, idx), http.StatusFound)
+	http.Redirect(w, r, h.backend.StreamURL(lib.BackendPluginID, backendBookID, idx), http.StatusFound)
 }
 
 func writeJSON(w http.ResponseWriter, status int, v any) {
@@ -693,13 +817,13 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // mobile clients accept either.
 func (h *Handler) handleLibraryAuthors(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
-	target, _, err := h.targetFn(r.Context())
-	if err != nil || target == "" {
+	lib, err := h.portalLibraryFromABSID(r.Context(), chi.URLParam(r, "id"))
+	if err != nil || lib.BackendPluginID == "" {
 		http.Error(w, "no backend configured", http.StatusPreconditionFailed)
 		return
 	}
 	limit, page := readPagedQuery(r, 50)
-	out, err := h.backend.BrowseAuthors(r.Context(), a.Token, target, backend.ListParams{Limit: limit})
+	out, err := h.backend.BrowseAuthors(r.Context(), a.Token, lib.BackendPluginID, backend.ListParams{Limit: limit, LibraryID: backendLibraryID(lib)})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
@@ -710,7 +834,7 @@ func (h *Handler) handleLibraryAuthors(w http.ResponseWriter, r *http.Request) {
 			"id":        s.ID,
 			"name":      s.Name,
 			"numBooks":  s.Count,
-			"libraryId": VirtualLibraryID,
+			"libraryId": absLibraryID(lib),
 		}
 	}
 	writeJSON(w, http.StatusOK, map[string]any{
@@ -727,13 +851,13 @@ func (h *Handler) handleLibraryAuthors(w http.ResponseWriter, r *http.Request) {
 // handleLibrarySeries mirrors ABS GET /api/libraries/{id}/series.
 func (h *Handler) handleLibrarySeries(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
-	target, _, err := h.targetFn(r.Context())
-	if err != nil || target == "" {
+	lib, err := h.portalLibraryFromABSID(r.Context(), chi.URLParam(r, "id"))
+	if err != nil || lib.BackendPluginID == "" {
 		http.Error(w, "no backend configured", http.StatusPreconditionFailed)
 		return
 	}
 	limit, page := readPagedQuery(r, 25)
-	out, err := h.backend.BrowseSeries(r.Context(), a.Token, target, backend.ListParams{Limit: limit})
+	out, err := h.backend.BrowseSeries(r.Context(), a.Token, lib.BackendPluginID, backend.ListParams{Limit: limit, LibraryID: backendLibraryID(lib)})
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
@@ -744,7 +868,7 @@ func (h *Handler) handleLibrarySeries(w http.ResponseWriter, r *http.Request) {
 			"id":        s.ID,
 			"name":      s.Name,
 			"numBooks":  s.Count,
-			"libraryId": VirtualLibraryID,
+			"libraryId": absLibraryID(lib),
 			// Drift: addedAt isn't supplied by the v1 backend's series
 			// list. We emit 0 (rather than omit) so clients that do a
 			// numeric sort on the field don't blow up.
@@ -788,6 +912,11 @@ func readPagedQuery(r *http.Request, defaultLimit int) (limit, page int) {
 // shelf breaks the layout.
 func (h *Handler) handlePersonalized(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
+	lib, err := h.portalLibraryFromABSID(r.Context(), chi.URLParam(r, "id"))
+	if err != nil || lib.BackendPluginID == "" {
+		writeJSON(w, http.StatusOK, []map[string]any{})
+		return
+	}
 	limit := 10
 	if v := r.URL.Query().Get("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
@@ -804,14 +933,6 @@ func (h *Handler) handlePersonalized(w http.ResponseWriter, r *http.Request) {
 		{"id": "listen-again", "label": "Listen Again", "labelStringKey": "LabelListenAgain", "type": "book", "entities": []any{}},
 	}
 
-	target, _, err := h.targetFn(r.Context())
-	if err != nil || target == "" {
-		// No backend configured — return empty shelves rather than 412 so
-		// the home page renders an empty state.
-		writeJSON(w, http.StatusOK, shelves)
-		return
-	}
-
 	// Resolve progress rows; classify by is_finished + progress_pct.
 	progRows, err := h.store.ListRecentProgress(r.Context(), a.UserID, 50)
 	if err != nil {
@@ -823,12 +944,19 @@ func (h *Handler) handlePersonalized(w http.ResponseWriter, r *http.Request) {
 	contPaths := make([]LibraryItem, 0, limit)
 	againPaths := make([]LibraryItem, 0, limit)
 	for _, p := range progRows {
+		progressLibraryID, backendBookID, encoded := bookref.Decode(p.BookID)
+		if encoded && progressLibraryID != lib.ID {
+			continue
+		}
+		if !encoded && lib.ID > 0 {
+			continue
+		}
 		if p.IsFinished {
 			if len(againPaths) >= limit {
 				continue
 			}
-			if d, derr := h.backend.GetDetail(r.Context(), a.Token, target, p.BookID); derr == nil {
-				againPaths = append(againPaths, ToLibraryItem(d, func(int) string { return "" }))
+			if d, derr := h.backend.GetDetail(r.Context(), a.Token, lib.BackendPluginID, backendBookID); derr == nil {
+				againPaths = append(againPaths, ToLibraryItem(withPortalLibraryDetail(d, lib), func(int) string { return "" }))
 			}
 			continue
 		}
@@ -838,8 +966,8 @@ func (h *Handler) handlePersonalized(w http.ResponseWriter, r *http.Request) {
 		if len(contPaths) >= limit {
 			continue
 		}
-		if d, derr := h.backend.GetDetail(r.Context(), a.Token, target, p.BookID); derr == nil {
-			contPaths = append(contPaths, ToLibraryItem(d, func(int) string { return "" }))
+		if d, derr := h.backend.GetDetail(r.Context(), a.Token, lib.BackendPluginID, backendBookID); derr == nil {
+			contPaths = append(contPaths, ToLibraryItem(withPortalLibraryDetail(d, lib), func(int) string { return "" }))
 		}
 	}
 	shelves[0]["entities"] = contPaths
@@ -850,19 +978,22 @@ func (h *Handler) handlePersonalized(w http.ResponseWriter, r *http.Request) {
 	// the user already has progress on.
 	progressBookIDs := map[string]bool{}
 	for _, p := range progRows {
-		progressBookIDs[p.BookID] = true
+		_, backendBookID, _ := bookref.Decode(p.BookID)
+		progressBookIDs[backendBookID] = true
 	}
-	listOut, err := h.backend.ListCatalog(r.Context(), a.Token, target, backend.ListParams{Limit: limit * 3, Sort: "added", Order: "desc"})
+	listOut, err := h.backend.ListCatalog(r.Context(), a.Token, lib.BackendPluginID, backend.ListParams{Limit: limit * 3, Sort: "added", Order: "desc", LibraryID: backendLibraryID(lib)})
 	if err != nil {
 		h.logger.Warn("personalized: list catalog", "err", err)
 	} else {
 		newest := make([]LibraryItem, 0, limit)
 		discover := make([]LibraryItem, 0, limit)
 		for _, s := range listOut.Items {
+			s = withPortalLibrarySummary(s, lib)
 			if len(newest) < limit {
 				newest = append(newest, ToLibrarySummary(s))
 			}
-			if !progressBookIDs[s.ID] && len(discover) < limit {
+			_, backendBookID, _ := bookref.Decode(s.ID)
+			if !progressBookIDs[backendBookID] && len(discover) < limit {
 				discover = append(discover, ToLibrarySummary(s))
 			}
 		}
@@ -872,14 +1003,14 @@ func (h *Handler) handlePersonalized(w http.ResponseWriter, r *http.Request) {
 
 	// recent-series: take the first N series the backend returns. Each
 	// entity is a thin series object; clients render the name + cover.
-	if seriesOut, err := h.backend.BrowseSeries(r.Context(), a.Token, target, backend.ListParams{Limit: limit}); err == nil {
+	if seriesOut, err := h.backend.BrowseSeries(r.Context(), a.Token, lib.BackendPluginID, backend.ListParams{Limit: limit, LibraryID: backendLibraryID(lib)}); err == nil {
 		recent := make([]map[string]any, 0, len(seriesOut.Items))
 		for _, s := range seriesOut.Items {
 			recent = append(recent, map[string]any{
 				"id":        s.ID,
 				"name":      s.Name,
 				"numBooks":  s.Count,
-				"libraryId": VirtualLibraryID,
+				"libraryId": absLibraryID(lib),
 				"books":     []any{},
 			})
 		}

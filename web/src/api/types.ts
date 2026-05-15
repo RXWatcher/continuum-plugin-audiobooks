@@ -10,6 +10,9 @@ export interface AudiobookSummary {
   duration_seconds?: number;
   year?: number;
   rating?: number;
+  library_id?: number;
+  library_name?: string;
+  media_type?: string;
 }
 
 export interface AudiobookFile {
@@ -114,6 +117,16 @@ export interface PathRemap {
   target_path: string;
 }
 
+export interface LibraryInfo {
+  id: number;
+  name: string;
+  media_type?: string;
+  backend_plugin_id?: string;
+  backend_library_id?: number;
+  enabled?: boolean;
+  sort_order?: number;
+}
+
 export interface BackendConfig {
   target_backend_plugin_id: string;
   auto_approve_requests: boolean;
@@ -124,6 +137,7 @@ export interface BackendConfig {
   path_remappings: PathRemap[];
   abs_access_token_ttl_hours: number;
   abs_refresh_token_ttl_days: number;
+  libraries?: LibraryInfo[];
 }
 
 export interface ABSSession {
@@ -170,4 +184,22 @@ export interface NarratorSummary {
   id: string;
   name: string;
   book_count?: number;
+}
+
+export interface InstalledCapability {
+  type: string;
+  id?: string;
+  display_name?: string;
+  description?: string;
+  metadata?: Record<string, unknown>;
+}
+
+export interface InstalledBackend {
+  id: number;
+  plugin_id: string;
+  display_name: string;
+  enabled: boolean;
+  capabilities: InstalledCapability[];
+  audiobook_backend?: InstalledCapability;
+  summary?: string;
 }
