@@ -17,7 +17,7 @@ import (
 const audience = "local_audiobooks"
 
 // MintStreamToken returns an HS256-signed JWT scoped to (book_id, file_idx)
-// and expiring after ttl. The verifier on the audiobooksdb side rejects
+// and expiring after ttl. The verifier on the local audiobooks side rejects
 // tokens with the wrong audience, mismatched book/file binding, or
 // expired exp.
 func MintStreamToken(secret []byte, userID, bookID string, fileIdx int, ttl time.Duration) (string, error) {
