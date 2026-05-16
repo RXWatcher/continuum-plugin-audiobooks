@@ -63,7 +63,7 @@ func (s *Server) Run(ctx context.Context, req *pluginv1.RunScheduledTaskRequest)
 
 func (s *Server) reconcileRequests(ctx context.Context, d *Deps) {
 	cfg, err := d.Store.GetBackendConfig(ctx)
-	if err != nil || cfg.TargetBackendPluginID == "" {
+	if err != nil || cfg.BackendInstallID() == "" {
 		return
 	}
 	if d.Backend == nil {
@@ -79,7 +79,7 @@ func (s *Server) reconcileRequests(ctx context.Context, d *Deps) {
 		// /requests endpoint is authenticated, so this only works when
 		// the host accepts service-token / unauthenticated reads. Pass an
 		// empty bearer and let the backend decide.
-		snap, err := d.Backend.GetRequestSnapshot(ctx, "", cfg.TargetBackendPluginID, r.ExternalID)
+		snap, err := d.Backend.GetRequestSnapshot(ctx, "", cfg.BackendInstallID(), r.ExternalID)
 		if err != nil {
 			continue
 		}

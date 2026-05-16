@@ -53,6 +53,11 @@ func (s *Server) handleCreateMyRequest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "backend config missing")
 		return
 	}
+	targetPluginID := cfg.BackendPluginID()
+	if targetPluginID == "" {
+		writeError(w, http.StatusPreconditionFailed, "no backend configured")
+		return
+	}
 	reqID := ulid.Make().String()
 	status := "pending"
 	if cfg.AutoApproveRequests {
@@ -65,15 +70,15 @@ func (s *Server) handleCreateMyRequest(w http.ResponseWriter, r *http.Request) {
 		Author:         p.Author,
 		ISBN:           p.ISBN,
 		Status:         status,
-		TargetPluginID: cfg.TargetBackendPluginID,
+		TargetPluginID: targetPluginID,
 	}); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
-	if status == "submitted" && s.d.Events != nil && cfg.TargetBackendPluginID != "" {
+	if status == "submitted" && s.d.Events != nil {
 		s.d.Events.Publish(r.Context(), "request_submitted", map[string]any{
 			"request_id":        reqID,
-			"target_plugin_id":  cfg.TargetBackendPluginID,
+			"target_plugin_id":  targetPluginID,
 			"title":             p.Title,
 			"author":            p.Author,
 			"isbn":              p.ISBN,

@@ -34,11 +34,12 @@ func (s *Server) resolveTarget(w http.ResponseWriter, r *http.Request) (string, 
 		writeError(w, http.StatusInternalServerError, "backend config not initialised")
 		return "", store.BackendConfig{}, false
 	}
-	if cfg.TargetBackendPluginID == "" {
+	installID := cfg.BackendInstallID()
+	if installID == "" {
 		writeError(w, http.StatusPreconditionFailed, "no backend configured; admin must set one in /admin/settings")
 		return "", cfg, false
 	}
-	return cfg.TargetBackendPluginID, cfg, true
+	return installID, cfg, true
 }
 
 func (s *Server) targetLibrary(r *http.Request, libraryID int64) (store.PortalLibrary, error) {
@@ -50,13 +51,13 @@ func (s *Server) targetLibrary(r *http.Request, libraryID int64) (store.PortalLi
 		return lib, nil
 	}
 	cfg, err := s.d.Store.GetBackendConfig(r.Context())
-	if err != nil || cfg.TargetBackendPluginID == "" {
+	if err != nil || cfg.BackendInstallID() == "" {
 		return store.PortalLibrary{}, fmt.Errorf("no backend configured")
 	}
 	return store.PortalLibrary{
 		Name:            "Audiobooks",
 		MediaType:       "audiobook",
-		BackendPluginID: cfg.TargetBackendPluginID,
+		BackendPluginID: cfg.BackendInstallID(),
 		Enabled:         true,
 	}, nil
 }
@@ -188,11 +189,11 @@ func (s *Server) handleListLibraries(w http.ResponseWriter, r *http.Request) {
 	}
 	if len(libs) == 0 {
 		cfg, err := s.d.Store.GetBackendConfig(r.Context())
-		if err == nil && cfg.TargetBackendPluginID != "" {
+		if err == nil && cfg.BackendInstallID() != "" {
 			libs = []store.PortalLibrary{{
 				Name:            "Audiobooks",
 				MediaType:       "audiobook",
-				BackendPluginID: cfg.TargetBackendPluginID,
+				BackendPluginID: cfg.BackendInstallID(),
 				Enabled:         true,
 			}}
 		}

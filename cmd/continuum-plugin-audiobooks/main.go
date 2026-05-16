@@ -127,7 +127,7 @@ func main() {
 				if err != nil {
 					return "", store.BackendConfig{}, err
 				}
-				return cfg.TargetBackendPluginID, cfg, nil
+				return cfg.BackendInstallID(), cfg, nil
 			},
 			HostBaseFn: func() string { return hostBase },
 			InstallID:  func() string { return "continuum.audiobooks" },

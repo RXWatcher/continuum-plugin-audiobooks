@@ -45,6 +45,7 @@ func (s *Server) handleGetBackendConfig(w http.ResponseWriter, r *http.Request) 
 	libs, _ := s.d.Store.ListPortalLibraries(r.Context(), false)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"target_backend_plugin_id":   cfg.TargetBackendPluginID,
+		"target_backend_installation_id": cfg.TargetBackendInstallID,
 		"auto_approve_requests":      cfg.AutoApproveRequests,
 		"streaming_mode":             cfg.StreamingMode,
 		"cache_dir":                  cfg.CacheDir,
@@ -59,6 +60,7 @@ func (s *Server) handleGetBackendConfig(w http.ResponseWriter, r *http.Request) 
 
 type backendConfigPayload struct {
 	TargetBackendPluginID    *string            `json:"target_backend_plugin_id"`
+	TargetBackendInstallID   *string            `json:"target_backend_installation_id"`
 	AutoApproveRequests      *bool              `json:"auto_approve_requests"`
 	StreamingMode            *string            `json:"streaming_mode"`
 	CacheDir                 *string            `json:"cache_dir"`
@@ -86,6 +88,9 @@ func (s *Server) handleUpdateBackendConfig(w http.ResponseWriter, r *http.Reques
 	}
 	if p.TargetBackendPluginID != nil {
 		cur.TargetBackendPluginID = *p.TargetBackendPluginID
+	}
+	if p.TargetBackendInstallID != nil {
+		cur.TargetBackendInstallID = *p.TargetBackendInstallID
 	}
 	if p.AutoApproveRequests != nil {
 		cur.AutoApproveRequests = *p.AutoApproveRequests

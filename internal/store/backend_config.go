@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -19,6 +20,7 @@ type PathRemap struct {
 // BackendConfig is the singleton row in backend_config (id=1).
 type BackendConfig struct {
 	TargetBackendPluginID    string
+	TargetBackendInstallID   string
 	AutoApproveRequests      bool
 	StreamingMode            string
 	CacheDir                 string
@@ -31,11 +33,42 @@ type BackendConfig struct {
 	UpdatedAt                time.Time
 }
 
+func (c BackendConfig) BackendInstallID() string {
+	if c.TargetBackendInstallID != "" {
+		return c.TargetBackendInstallID
+	}
+	if isNumericID(c.TargetBackendPluginID) {
+		return c.TargetBackendPluginID
+	}
+	return ""
+}
+
+func (c BackendConfig) BackendPluginID() string {
+	if isNumericID(c.TargetBackendPluginID) {
+		return ""
+	}
+	return c.TargetBackendPluginID
+}
+
+func isNumericID(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return false
+	}
+	for _, r := range value {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
 // GetBackendConfig returns the singleton row; if no row exists yet, returns
 // ErrNotFound (caller should initialise).
 func (s *Store) GetBackendConfig(ctx context.Context) (BackendConfig, error) {
 	row := s.pool.QueryRow(ctx, `
-		SELECT target_backend_plugin_id, auto_approve_requests, streaming_mode,
+		SELECT target_backend_plugin_id, target_backend_installation_id,
+		       auto_approve_requests, streaming_mode,
 		       COALESCE(cache_dir,''), cache_max_size_gb, cache_download_concurrency,
 		       path_remappings, abs_jwt_secret,
 		       abs_access_token_ttl_hours, abs_refresh_token_ttl_days, updated_at
@@ -44,7 +77,8 @@ func (s *Store) GetBackendConfig(ctx context.Context) (BackendConfig, error) {
 	var cfg BackendConfig
 	var remapsJSON []byte
 	if err := row.Scan(
-		&cfg.TargetBackendPluginID, &cfg.AutoApproveRequests, &cfg.StreamingMode,
+		&cfg.TargetBackendPluginID, &cfg.TargetBackendInstallID,
+		&cfg.AutoApproveRequests, &cfg.StreamingMode,
 		&cfg.CacheDir, &cfg.CacheMaxSizeGB, &cfg.CacheDownloadConcurrency,
 		&remapsJSON, &cfg.ABSJWTSecret,
 		&cfg.ABSAccessTTLHours, &cfg.ABSRefreshTTLDays, &cfg.UpdatedAt,
@@ -83,12 +117,14 @@ func (s *Store) UpdateBackendConfig(ctx context.Context, cfg BackendConfig) erro
 	}
 	_, err = s.pool.Exec(ctx, `
 		INSERT INTO backend_config
-			(id, target_backend_plugin_id, auto_approve_requests, streaming_mode,
+			(id, target_backend_plugin_id, target_backend_installation_id,
+			 auto_approve_requests, streaming_mode,
 			 cache_dir, cache_max_size_gb, cache_download_concurrency, path_remappings,
 			 abs_jwt_secret, abs_access_token_ttl_hours, abs_refresh_token_ttl_days, updated_at)
-		VALUES (1, $1, $2, $3, NULLIF($4,''), $5, $6, $7, $8, $9, $10, now())
+		VALUES (1, $1, $2, $3, $4, NULLIF($5,''), $6, $7, $8, $9, $10, $11, now())
 		ON CONFLICT (id) DO UPDATE SET
 			target_backend_plugin_id    = EXCLUDED.target_backend_plugin_id,
+			target_backend_installation_id = EXCLUDED.target_backend_installation_id,
 			auto_approve_requests       = EXCLUDED.auto_approve_requests,
 			streaming_mode              = EXCLUDED.streaming_mode,
 			cache_dir                   = COALESCE(EXCLUDED.cache_dir, backend_config.cache_dir),
@@ -100,7 +136,8 @@ func (s *Store) UpdateBackendConfig(ctx context.Context, cfg BackendConfig) erro
 			abs_refresh_token_ttl_days  = EXCLUDED.abs_refresh_token_ttl_days,
 			updated_at                  = now()
 	`,
-		cfg.TargetBackendPluginID, cfg.AutoApproveRequests, cfg.StreamingMode,
+		cfg.TargetBackendPluginID, cfg.TargetBackendInstallID,
+		cfg.AutoApproveRequests, cfg.StreamingMode,
 		cfg.CacheDir, cfg.CacheMaxSizeGB, cfg.CacheDownloadConcurrency, remaps,
 		cfg.ABSJWTSecret, cfg.ABSAccessTTLHours, cfg.ABSRefreshTTLDays,
 	)
