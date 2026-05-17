@@ -75,7 +75,11 @@ func (h *Handler) handleAcknowledged(ctx context.Context, d *Deps, p map[string]
 	if reqID == "" || externalID == "" {
 		return
 	}
-	if err := d.Store.SetRequestExternal(ctx, reqID, externalID, "acknowledged"); err != nil {
+	status, _ := p["status"].(string)
+	if status == "" {
+		status = "acknowledged"
+	}
+	if err := d.Store.SetRequestExternal(ctx, reqID, externalID, status); err != nil {
 		h.logger.Warn("set request external", "err", err, "request_id", reqID)
 	}
 }

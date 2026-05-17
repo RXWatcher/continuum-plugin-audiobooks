@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/table';
 import { Button } from '@/components/ui/button';
 
-const STATUSES = ['pending', 'submitted', 'acknowledged', 'imported', 'failed', 'denied', 'cancelled'];
+const STATUSES = ['pending', 'submitted', 'acknowledged', 'queued', 'downloading', 'imported', 'failed', 'denied', 'cancelled'];
 
 export default function AdminRequests() {
   const [status, setStatus] = useState('pending');

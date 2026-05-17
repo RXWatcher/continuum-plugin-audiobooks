@@ -109,7 +109,7 @@ func (s *Store) ListReconcileCandidates(ctx context.Context, limit int) ([]Reque
 		       COALESCE(denied_reason,''), COALESCE(failure_reason,''),
 		       created_at, updated_at, fulfilled_at
 		FROM request
-		WHERE external_id IS NOT NULL AND status IN ('submitted','acknowledged')
+		WHERE external_id IS NOT NULL AND status IN ('submitted','acknowledged','queued','downloading')
 		ORDER BY updated_at ASC LIMIT $1
 	`, limit)
 	if err != nil {
@@ -134,8 +134,7 @@ func (s *Store) UpdateRequestStatus(ctx context.Context, id, status string, deni
 	return nil
 }
 
-// SetRequestExternal stores the backend's external_id and status (typically
-// "submitted" or "acknowledged").
+// SetRequestExternal stores the backend's external_id and status.
 func (s *Store) SetRequestExternal(ctx context.Context, id, externalID, status string) error {
 	_, err := s.pool.Exec(ctx, `
 		UPDATE request SET external_id = NULLIF($2,''), status = $3, updated_at = now()

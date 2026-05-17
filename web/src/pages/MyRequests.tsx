@@ -16,6 +16,8 @@ const STATUS_LABELS: Record<string, string> = {
   pending: 'Awaiting admin review',
   submitted: 'Submitted',
   acknowledged: 'Acknowledged',
+  queued: 'Queued',
+  downloading: 'Downloading',
   imported: 'Fulfilled',
   failed: 'Failed',
   denied: 'Denied',
@@ -61,7 +63,7 @@ export default function MyRequests() {
                       </span>
                     </TableCell>
                     <TableCell>
-                      {['pending', 'submitted', 'acknowledged'].includes(r.status) && (
+                      {['pending', 'submitted', 'acknowledged', 'queued', 'downloading'].includes(r.status) && (
                         <Button size="sm" variant="ghost" onClick={() => cancel.mutate(r.id)}>
                           Cancel
                         </Button>
