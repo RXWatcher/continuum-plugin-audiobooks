@@ -1,57 +1,53 @@
-# Audiobooks Portal Plugin
+# Audiobooks Portal for Continuum
 
-`continuum.audiobooks` is the customer-facing audiobook experience for
-Continuum. It provides the web portal, playback surfaces, request flow, and
-Audiobookshelf-compatible client API while delegating catalog and streaming
-data to backend plugins.
+`continuum.audiobooks` is Continuum's user-facing audiobook portal. It provides
+the web app, request flow, playback surfaces, and Audiobookshelf-compatible
+client API while delegating catalog, file, stream, and request fulfillment work
+to audiobook backend plugins.
 
-## What It Does
+Install this plugin when you want a single audiobook experience in Continuum
+that can sit in front of local libraries, external BookWarehouse instances, or
+request providers such as `continuum.audiobookbay-requests`.
 
-- Serves the authenticated Audiobooks web app.
-- Exposes REST APIs for browsing, playback sessions, requests, and client
-  integrations.
-- Provides public and authenticated Audiobookshelf-compatible routes.
-- Lets admins define multiple user-facing presentation libraries, each backed
-  by a different audiobook source plugin or backend sub-library.
-- Watches backend request/import events.
-- Reconciles request state, closes idle sessions, and evicts cached audio.
-- Supports optional standalone HTTP serving for reverse-proxied client-app
-  access.
+## Features
 
-## Capabilities
+- Authenticated Audiobooks web app for browsing, searching, requesting, and
+  playing audiobooks.
+- Public and authenticated Audiobookshelf-compatible routes for compatible
+  clients.
+- Admin-managed presentation libraries that can point at different backend
+  plugins or backend sub-libraries.
+- Request routing to a configured request provider plugin.
+- Request status tracking for `submitted`, `acknowledged`, `queued`,
+  `downloading`, `imported`, `failed`, `denied`, and `cancelled`.
+- Optional standalone HTTP listener for reverse-proxied client routes.
+- Optional CDN-style signed track URLs when paired with a compatible backend.
+- Scheduled reconciliation for requests, idle sessions, and cached audio.
 
-| Capability | ID | Purpose |
-|---|---|---|
-| `http_routes.v1` | `portal` | User-facing SPA, REST API, and ABS-compatible routes. |
-| `event_consumer.v1` | `status_watcher` | Tracks backend fulfillment and import events. |
-| `scheduled_task.v1` | `request_reconciler` | Reconciles requests, sessions, and cache state. |
+## Architecture
 
-## HTTP Routes
+The portal is intentionally separate from source providers:
 
-| Route | Access | Purpose |
-|---|---|---|
-| `/api/v1/*` | authenticated | Portal API. |
-| `/api/v1/libraries` | authenticated | Enabled presentation libraries for the user portal. |
-| `/api/v1/admin/libraries` | admin | Create, update, reorder, enable, and remove presentation libraries. |
-| `/api/v1/admin/backend-libraries` | admin | Discover source-provider sub-libraries when a backend exposes them. |
-| `/abs/public/*` | public | Public ABS-compatible assets. |
-| `/abs/api/login` | public | ABS-compatible login. |
-| `/abs/api/auth/refresh` | public | ABS-compatible token refresh. |
-| `/abs/api/ping` | public | Client health/ping endpoint. |
-| `/abs/*` | authenticated | ABS-compatible authenticated API. |
-| `/assets/*` | public | Static web assets. |
-| `/*` | authenticated | Navigable user SPA labelled `Audiobooks`. |
+- `continuum.audiobooks` owns the user interface, ABS-compatible API,
+  requests table, playback sessions, and library presentation.
+- Catalog and stream providers such as `continuum.local-audiobooks` or
+  `continuum.bookwarehouse-audio` own the actual library data.
+- Request providers such as `continuum.audiobookbay-requests` can be selected
+  separately from the catalog provider.
+
+This keeps the customer-facing portal stable while operators can add, remove,
+or swap providers underneath it.
 
 ## Configuration
 
 | Key | Required | Description |
 |---|---|---|
 | `database_url` | yes | Postgres DSN using the `audiobooks` schema. |
-| `standalone_http_listen` | no | Optional direct listener for client-app routes. |
-| `cdn_hostname` | no | Optional hostname for presigned CDN-style track URLs. |
-| `cdn_signing_secret` | no | Base64 HMAC secret shared with the audiobook backend. |
+| `standalone_http_listen` | no | Optional direct listener, for example `127.0.0.1:7878`, for reverse-proxied client routes. |
+| `cdn_hostname` | no | Hostname used for presigned CDN-style track URLs. |
+| `cdn_signing_secret` | no | 32-byte base64 HMAC secret shared with the streaming backend. |
 
-Example `database_url`:
+Example DSN:
 
 ```text
 postgres://plugin_audiobooks:password@postgres:5432/continuum?search_path=audiobooks&sslmode=disable
@@ -65,71 +61,54 @@ CREATE SCHEMA audiobooks AUTHORIZATION plugin_audiobooks;
 GRANT CONNECT ON DATABASE continuum TO plugin_audiobooks;
 ```
 
-## Presentation Libraries
+The plugin applies its migrations at startup.
 
-The portal separates the user-facing library from the backend provider. An
-admin can define libraries such as `Audiobooks`, `Podcasts`, or `Lectures` and
-route each one to a different installed plugin that provides
-`audiobook_backend.v1`.
+## Provider Setup
 
-Each presentation library stores:
+After installing the portal:
 
-- Display name and media type.
-- Backend plugin ID, for example `continuum.local-audiobooks` or an internal
-  managed audio provider.
-- Optional backend sub-library ID when the source backend exposes
-  `/api/v1/catalog/libraries`.
-- Enabled state and sort order.
+1. Install at least one audiobook backend plugin, such as
+   `continuum.local-audiobooks` or `continuum.bookwarehouse-audio`.
+2. In the Audiobooks admin UI, create a presentation library and point it at
+   the backend plugin or backend sub-library.
+3. Optionally install a request provider, such as
+   `continuum.audiobookbay-requests`, and select it in admin settings.
+4. If using direct client streaming, configure `standalone_http_listen` and
+   matching stream signing settings on the backend.
 
-Catalog, search, browse, detail, stream, and Audiobookshelf-compatible routes
-all carry the selected presentation library through to the backend. Public item
-IDs are encoded with the presentation library ID so two different source
-libraries can safely contain the same backend book ID.
+## HTTP Surface
 
-## Backend Integration
+| Route | Access | Purpose |
+|---|---|---|
+| `/api/v1/*` | authenticated | Portal REST API. |
+| `/api/v1/libraries` | authenticated | Enabled presentation libraries. |
+| `/api/v1/admin/*` | admin | Library and settings administration. |
+| `/abs/public/*` | public | Public ABS-compatible assets. |
+| `/abs/api/login` | public | ABS-compatible login endpoint. |
+| `/abs/api/auth/refresh` | public | ABS-compatible token refresh. |
+| `/abs/*` | authenticated | ABS-compatible API. |
+| `/assets/*` | public | Web assets. |
+| `/*` | authenticated | Audiobooks SPA. |
 
-The portal expects one or more audiobook backend providers to expose catalog,
-cover, and streaming behavior. For local M4B/MP3 libraries, use
-`continuum.local-audiobooks`.
+## Events
 
-The portal listens for backend state changes and also runs periodic
-reconciliation so missed events do not permanently strand requests.
+The portal listens for backend request and import events, including:
 
-Backend plugins are optional peers, not startup dependencies. If no audiobook
-backend is installed or the configured request provider is unavailable, the
-portal still starts; catalog/request routes report the missing provider only
-when that provider is needed. Notification delivery is likewise passive when
-`continuum.notifications` is installed and absent otherwise.
+- `request_acknowledged`
+- `request_status_changed`
+- `request_fulfilled`
+- `request_failed`
+- `audiobook_imported`
+- `audiobook_failed`
 
-## Standalone And CDN Modes
-
-`standalone_http_listen` lets the plugin bind a direct TCP listener such as
-`:7878`. This is useful for mobile audiobook clients and reverse-proxy setups.
-Protected SPA routes still require a Continuum session, while public client-app
-routes can be reached directly.
-
-`cdn_hostname` and `cdn_signing_secret` allow the portal to emit presigned track
-URLs that point at a backend or reverse-proxied streaming host. The signing
-secret must match the backend stream verification secret.
+Acknowledgements may include a provider status such as `queued`; the portal
+stores and displays that status so users can see whether a request is merely
+accepted, queued, actively downloading, or fulfilled.
 
 ## Build And Test
 
 ```bash
 go test ./...
+cd web && npm run build
 make build
 ```
-
-If frontend assets change, build the web project before packaging.
-
-## Operational Notes
-
-- Keep the portal and backend cache/signing settings aligned.
-- Configure at least one enabled presentation library before exposing the
-  portal to users.
-- Use HTTPS in front of standalone client-facing routes.
-- The scheduled reconciler is designed to be idempotent.
-- Monitor request failure counts after changing backend provider configuration.
-
-## Repository Status
-
-This is a first-party Continuum plugin owned by the Continuum project.
