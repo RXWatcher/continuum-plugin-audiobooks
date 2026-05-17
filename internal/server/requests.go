@@ -26,7 +26,7 @@ func (s *Server) handleListMyRequests(w http.ResponseWriter, r *http.Request) {
 	}
 	items, err := s.d.Store.ListUserRequests(r.Context(), id.UserID, 100)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": items})
@@ -72,7 +72,7 @@ func (s *Server) handleCreateMyRequest(w http.ResponseWriter, r *http.Request) {
 		Status:         status,
 		TargetPluginID: targetPluginID,
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	if status == "submitted" && s.d.Events != nil {
@@ -104,7 +104,7 @@ func (s *Server) handleCancelMyRequest(w http.ResponseWriter, r *http.Request) {
 			writeError(w, http.StatusNotFound, "request not found or not cancellable")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

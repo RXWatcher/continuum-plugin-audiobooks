@@ -31,7 +31,7 @@ func (s *Server) handleListMyCollections(w http.ResponseWriter, r *http.Request)
 	}
 	out, err := s.d.Store.ListUserCollections(r.Context(), id.UserID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
@@ -43,7 +43,7 @@ func (s *Server) handleListPublicCollections(w http.ResponseWriter, r *http.Requ
 	}
 	out, err := s.d.Store.ListPublicCollections(r.Context(), 200)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
@@ -77,7 +77,7 @@ func (s *Server) handleCreateCollection(w http.ResponseWriter, r *http.Request) 
 		CoverBookID: p.CoverBookID,
 	}
 	if err := s.d.Store.CreateCollection(r.Context(), c); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, c)
@@ -106,7 +106,7 @@ func (s *Server) handleUpdateCollection(w http.ResponseWriter, r *http.Request) 
 			writeError(w, http.StatusNotFound, "not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -123,7 +123,7 @@ func (s *Server) handleDeleteCollection(w http.ResponseWriter, r *http.Request) 
 			writeError(w, http.StatusNotFound, "not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -137,7 +137,7 @@ func (s *Server) handleListCollectionItems(w http.ResponseWriter, r *http.Reques
 	collID := chi.URLParam(r, "id")
 	out, err := s.d.Store.ListCollectionItems(r.Context(), collID, id.UserID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
@@ -159,7 +159,7 @@ func (s *Server) handleAddCollectionItem(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	if err := s.d.Store.AddCollectionItem(r.Context(), collID, p.BookID, id.UserID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]any{"ok": true})
@@ -173,7 +173,7 @@ func (s *Server) handleRemoveCollectionItem(w http.ResponseWriter, r *http.Reque
 	collID := chi.URLParam(r, "id")
 	bookID := chi.URLParam(r, "book_id")
 	if err := s.d.Store.RemoveCollectionItem(r.Context(), collID, bookID, id.UserID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

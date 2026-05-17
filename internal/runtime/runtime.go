@@ -4,6 +4,7 @@ package runtime
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"sync"
 
 	pluginv1 "github.com/ContinuumApp/continuum-plugin-sdk/pkg/pluginproto/continuum/plugin/v1"
@@ -19,6 +20,30 @@ type Config struct {
 	CDNHostname          string `json:"cdn_hostname"`
 	CDNSigningSecret     string `json:"cdn_signing_secret"`
 }
+
+// mask collapses a non-empty secret to a fixed marker so its length is not
+// revealed either.
+func mask(s string) string {
+	if s == "" {
+		return ""
+	}
+	return "***redacted***"
+}
+
+// LogValue implements slog.LogValuer so that slog.Any("cfg", cfg) never
+// serializes the CDN signing secret or the DSN (which embeds the DB password).
+func (c Config) LogValue() slog.Value {
+	return slog.GroupValue(
+		slog.String("database_url", mask(c.DatabaseURL)),
+		slog.String("standalone_http_listen", c.StandaloneHTTPListen),
+		slog.String("cdn_hostname", c.CDNHostname),
+		slog.String("cdn_signing_secret", mask(c.CDNSigningSecret)),
+	)
+}
+
+// String implements fmt.Stringer with the same redaction so fmt.Sprintf("%v",
+// cfg) / log.Print(cfg) are also safe.
+func (c Config) String() string { return c.LogValue().String() }
 
 // Configured reports whether the required fields are set.
 func (c Config) Configured() bool { return c.DatabaseURL != "" }

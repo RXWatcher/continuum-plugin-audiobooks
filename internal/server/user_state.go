@@ -36,7 +36,7 @@ func (s *Server) handleListMyProgress(w http.ResponseWriter, r *http.Request) {
 	}
 	out, err := s.d.Store.ListRecentProgress(r.Context(), id.UserID, limit)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
@@ -66,7 +66,7 @@ func (s *Server) handleUpsertProgress(w http.ResponseWriter, r *http.Request) {
 		ProgressPct:    p.ProgressPct,
 		IsFinished:     p.IsFinished,
 	}); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -80,7 +80,7 @@ func (s *Server) handleListBookmarks(w http.ResponseWriter, r *http.Request) {
 	bookID := chi.URLParam(r, "id")
 	out, err := s.d.Store.ListBookmarks(r.Context(), id.UserID, bookID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
@@ -112,7 +112,7 @@ func (s *Server) handleCreateBookmark(w http.ResponseWriter, r *http.Request) {
 		Note:            p.Note,
 	}
 	if err := s.d.Store.InsertBookmark(r.Context(), bk); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, bk)
@@ -125,7 +125,7 @@ func (s *Server) handleDeleteBookmark(w http.ResponseWriter, r *http.Request) {
 	}
 	bmID := chi.URLParam(r, "bm_id")
 	if err := s.d.Store.DeleteBookmark(r.Context(), bmID, id.UserID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -162,7 +162,7 @@ func (s *Server) handleDeleteRating(w http.ResponseWriter, r *http.Request) {
 	}
 	bookID := chi.URLParam(r, "id")
 	if err := s.d.Store.DeleteRating(r.Context(), id.UserID, bookID); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)

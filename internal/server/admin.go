@@ -37,7 +37,7 @@ func (s *Server) handleGetBackendConfig(w http.ResponseWriter, r *http.Request) 
 	}
 	cfg, err := s.d.Store.GetBackendConfig(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	// Don't leak the JWT secret over the wire.
@@ -87,7 +87,7 @@ func (s *Server) handleUpdateBackendConfig(w http.ResponseWriter, r *http.Reques
 	}
 	cur, err := s.d.Store.GetBackendConfig(r.Context())
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	if p.TargetBackendPluginID != nil {
@@ -129,13 +129,13 @@ func (s *Server) handleUpdateBackendConfig(w http.ResponseWriter, r *http.Reques
 	if p.RotateABSSecret {
 		secret, err := randomBytes(32)
 		if err != nil {
-			writeError(w, http.StatusInternalServerError, "rotate secret: "+err.Error())
+			writeInternal(w, r, err)
 			return
 		}
 		cur.ABSJWTSecret = secret
 	}
 	if err := s.d.Store.UpdateBackendConfig(r.Context(), cur); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	cur.ABSJWTSecret = nil
@@ -148,7 +148,7 @@ func (s *Server) handleAdminListLibraries(w http.ResponseWriter, r *http.Request
 	}
 	libs, err := s.d.Store.ListPortalLibraries(r.Context(), false)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": libs})
@@ -200,7 +200,7 @@ func (s *Server) handleAdminListRequests(w http.ResponseWriter, r *http.Request)
 	}
 	out, err := s.d.Store.ListRequestsByStatus(r.Context(), status, 200)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
@@ -217,7 +217,7 @@ func (s *Server) handleAdminApproveRequest(w http.ResponseWriter, r *http.Reques
 			writeError(w, http.StatusNotFound, "request not found")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	if req.Status != "pending" {
@@ -225,7 +225,7 @@ func (s *Server) handleAdminApproveRequest(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := s.d.Store.UpdateRequestStatus(r.Context(), reqID, "submitted", "", ""); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	if s.d.Events != nil && req.TargetPluginID != "" {
@@ -255,7 +255,7 @@ func (s *Server) handleAdminDenyRequest(w http.ResponseWriter, r *http.Request) 
 	var p denyPayload
 	_ = json.NewDecoder(r.Body).Decode(&p)
 	if err := s.d.Store.UpdateRequestStatus(r.Context(), reqID, "denied", p.Reason, ""); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
@@ -267,7 +267,7 @@ func (s *Server) handleAdminListSessions(w http.ResponseWriter, r *http.Request)
 	}
 	out, err := s.d.Store.ListActiveABSSessions(r.Context(), 500)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
@@ -279,7 +279,7 @@ func (s *Server) handleAdminCloseSession(w http.ResponseWriter, r *http.Request)
 	}
 	id := chi.URLParam(r, "id")
 	if err := s.d.Store.CloseABSSession(r.Context(), id); err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -292,7 +292,7 @@ func (s *Server) handleAdminListTokens(w http.ResponseWriter, r *http.Request) {
 	userID := r.URL.Query().Get("user_id")
 	out, err := s.d.Store.ListABSTokens(r.Context(), userID)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
@@ -305,16 +305,26 @@ func (s *Server) handleAdminRevokeToken(w http.ResponseWriter, r *http.Request) 
 	id := chi.URLParam(r, "id")
 	tokens, err := s.d.Store.ListABSTokens(r.Context(), "")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	for _, t := range tokens {
 		if t.ID == id {
-			_ = s.d.Store.RevokeABSToken(r.Context(), id, t.UserID)
-			break
+			if err := s.d.Store.RevokeABSToken(r.Context(), id, t.UserID); err != nil {
+				if errors.Is(err, store.ErrNotFound) {
+					writeError(w, http.StatusNotFound, "token not found")
+					return
+				}
+				writeInternal(w, r, err)
+				return
+			}
+			w.WriteHeader(http.StatusNoContent)
+			return
 		}
 	}
-	w.WriteHeader(http.StatusNoContent)
+	// No token with this id: return 404 instead of a misleading 204 that
+	// would tell the admin a revoke succeeded when nothing was revoked.
+	writeError(w, http.StatusNotFound, "token not found")
 }
 
 // handleGenerateStreamingSecret generates a cryptographically-random 32-byte
@@ -328,7 +338,7 @@ func (s *Server) handleGenerateStreamingSecret(w http.ResponseWriter, r *http.Re
 	}
 	b, err := randomBytes(32)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, "entropy: "+err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	secret := base64.StdEncoding.EncodeToString(b)

@@ -6,6 +6,7 @@ package server
 
 import (
 	"encoding/json"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -78,4 +79,14 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]any{"error": msg})
+}
+
+// writeInternal handles an unexpected store/backend error. The underlying
+// error may carry SQL text, schema names, or internal paths, so it is logged
+// server-side (with the request method+path for triage) and only an opaque
+// 500 is returned to the client.
+func writeInternal(w http.ResponseWriter, r *http.Request, err error) {
+	slog.Error("audiobooks: internal error",
+		"method", r.Method, "path", r.URL.Path, "err", err)
+	writeError(w, http.StatusInternalServerError, "internal error")
 }

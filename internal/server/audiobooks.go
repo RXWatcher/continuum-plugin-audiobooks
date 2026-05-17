@@ -184,7 +184,7 @@ func (s *Server) handleListLibraries(w http.ResponseWriter, r *http.Request) {
 	}
 	libs, err := s.d.Store.ListPortalLibraries(r.Context(), true)
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
+		writeInternal(w, r, err)
 		return
 	}
 	if len(libs) == 0 {
