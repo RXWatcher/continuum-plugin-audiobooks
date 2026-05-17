@@ -44,23 +44,27 @@ func (s *Server) handleGetBackendConfig(w http.ResponseWriter, r *http.Request) 
 	cfg.ABSJWTSecret = nil
 	libs, _ := s.d.Store.ListPortalLibraries(r.Context(), false)
 	writeJSON(w, http.StatusOK, map[string]any{
-		"target_backend_plugin_id":       cfg.TargetBackendPluginID,
-		"target_backend_installation_id": cfg.TargetBackendInstallID,
-		"auto_approve_requests":          cfg.AutoApproveRequests,
-		"streaming_mode":                 cfg.StreamingMode,
-		"cache_dir":                      cfg.CacheDir,
-		"cache_max_size_gb":              cfg.CacheMaxSizeGB,
-		"cache_download_concurrency":     cfg.CacheDownloadConcurrency,
-		"path_remappings":                cfg.PathRemappings,
-		"abs_access_token_ttl_hours":     cfg.ABSAccessTTLHours,
-		"abs_refresh_token_ttl_days":     cfg.ABSRefreshTTLDays,
-		"libraries":                      libs,
+		"target_backend_plugin_id":                cfg.TargetBackendPluginID,
+		"target_backend_installation_id":          cfg.TargetBackendInstallID,
+		"target_request_provider_plugin_id":       cfg.TargetRequestPluginID,
+		"target_request_provider_installation_id": cfg.TargetRequestInstallID,
+		"auto_approve_requests":                   cfg.AutoApproveRequests,
+		"streaming_mode":                          cfg.StreamingMode,
+		"cache_dir":                               cfg.CacheDir,
+		"cache_max_size_gb":                       cfg.CacheMaxSizeGB,
+		"cache_download_concurrency":              cfg.CacheDownloadConcurrency,
+		"path_remappings":                         cfg.PathRemappings,
+		"abs_access_token_ttl_hours":              cfg.ABSAccessTTLHours,
+		"abs_refresh_token_ttl_days":              cfg.ABSRefreshTTLDays,
+		"libraries":                               libs,
 	})
 }
 
 type backendConfigPayload struct {
 	TargetBackendPluginID    *string            `json:"target_backend_plugin_id"`
 	TargetBackendInstallID   *string            `json:"target_backend_installation_id"`
+	TargetRequestPluginID    *string            `json:"target_request_provider_plugin_id"`
+	TargetRequestInstallID   *string            `json:"target_request_provider_installation_id"`
 	AutoApproveRequests      *bool              `json:"auto_approve_requests"`
 	StreamingMode            *string            `json:"streaming_mode"`
 	CacheDir                 *string            `json:"cache_dir"`
@@ -91,6 +95,12 @@ func (s *Server) handleUpdateBackendConfig(w http.ResponseWriter, r *http.Reques
 	}
 	if p.TargetBackendInstallID != nil {
 		cur.TargetBackendInstallID = *p.TargetBackendInstallID
+	}
+	if p.TargetRequestPluginID != nil {
+		cur.TargetRequestPluginID = *p.TargetRequestPluginID
+	}
+	if p.TargetRequestInstallID != nil {
+		cur.TargetRequestInstallID = *p.TargetRequestInstallID
 	}
 	if p.AutoApproveRequests != nil {
 		cur.AutoApproveRequests = *p.AutoApproveRequests

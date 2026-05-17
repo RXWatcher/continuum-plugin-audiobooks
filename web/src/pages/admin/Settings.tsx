@@ -77,6 +77,7 @@ export default function AdminSettings() {
 
   const update = <K extends keyof BackendConfig>(k: K, v: BackendConfig[K]) =>
     setForm({ ...form, [k]: v });
+  const requestProviders = (providers.data ?? []).filter(isRequestProvider);
 
   return (
     <div className="space-y-6">
@@ -110,10 +111,10 @@ export default function AdminSettings() {
           </h3>
           <Field label="Default provider">
             <ProviderSelect
-              value={form.target_backend_plugin_id}
-              providers={providers.data ?? []}
-              onChange={(value) => update('target_backend_plugin_id', value)}
-              placeholder="continuum.bookwarehouse-audio"
+              value={form.target_request_provider_plugin_id || form.target_backend_plugin_id}
+              providers={requestProviders.length ? requestProviders : providers.data ?? []}
+              onChange={(value) => update('target_request_provider_plugin_id', value)}
+              placeholder="continuum.audiobookbay-requests"
             />
           </Field>
           <Field label="Auto-approve requests">
@@ -414,6 +415,11 @@ function ProviderSelect({
       </SelectContent>
     </Select>
   );
+}
+
+function isRequestProvider(provider: InstalledBackend): boolean {
+  const roles = provider.audiobook_backend?.metadata?.audiobook_roles;
+  return Array.isArray(roles) && roles.includes('request_provider');
 }
 
 function normalizeLibraries(items: LibraryInfo[]): LibraryInfo[] {

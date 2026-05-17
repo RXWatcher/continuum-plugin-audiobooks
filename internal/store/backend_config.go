@@ -21,6 +21,8 @@ type PathRemap struct {
 type BackendConfig struct {
 	TargetBackendPluginID    string
 	TargetBackendInstallID   string
+	TargetRequestPluginID    string
+	TargetRequestInstallID   string
 	AutoApproveRequests      bool
 	StreamingMode            string
 	CacheDir                 string
@@ -50,6 +52,26 @@ func (c BackendConfig) BackendPluginID() string {
 	return c.TargetBackendPluginID
 }
 
+func (c BackendConfig) RequestProviderInstallID() string {
+	if c.TargetRequestInstallID != "" {
+		return c.TargetRequestInstallID
+	}
+	if isNumericID(c.TargetRequestPluginID) {
+		return c.TargetRequestPluginID
+	}
+	return c.BackendInstallID()
+}
+
+func (c BackendConfig) RequestProviderPluginID() string {
+	if c.TargetRequestPluginID == "" {
+		return c.BackendPluginID()
+	}
+	if isNumericID(c.TargetRequestPluginID) {
+		return ""
+	}
+	return c.TargetRequestPluginID
+}
+
 func isNumericID(value string) bool {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -68,6 +90,7 @@ func isNumericID(value string) bool {
 func (s *Store) GetBackendConfig(ctx context.Context) (BackendConfig, error) {
 	row := s.pool.QueryRow(ctx, `
 		SELECT target_backend_plugin_id, target_backend_installation_id,
+		       target_request_provider_plugin_id, target_request_provider_installation_id,
 		       auto_approve_requests, streaming_mode,
 		       COALESCE(cache_dir,''), cache_max_size_gb, cache_download_concurrency,
 		       path_remappings, abs_jwt_secret,
@@ -78,6 +101,7 @@ func (s *Store) GetBackendConfig(ctx context.Context) (BackendConfig, error) {
 	var remapsJSON []byte
 	if err := row.Scan(
 		&cfg.TargetBackendPluginID, &cfg.TargetBackendInstallID,
+		&cfg.TargetRequestPluginID, &cfg.TargetRequestInstallID,
 		&cfg.AutoApproveRequests, &cfg.StreamingMode,
 		&cfg.CacheDir, &cfg.CacheMaxSizeGB, &cfg.CacheDownloadConcurrency,
 		&remapsJSON, &cfg.ABSJWTSecret,
@@ -118,13 +142,16 @@ func (s *Store) UpdateBackendConfig(ctx context.Context, cfg BackendConfig) erro
 	_, err = s.pool.Exec(ctx, `
 		INSERT INTO backend_config
 			(id, target_backend_plugin_id, target_backend_installation_id,
+			 target_request_provider_plugin_id, target_request_provider_installation_id,
 			 auto_approve_requests, streaming_mode,
 			 cache_dir, cache_max_size_gb, cache_download_concurrency, path_remappings,
 			 abs_jwt_secret, abs_access_token_ttl_hours, abs_refresh_token_ttl_days, updated_at)
-		VALUES (1, $1, $2, $3, $4, NULLIF($5,''), $6, $7, $8, $9, $10, $11, now())
+		VALUES (1, $1, $2, $3, $4, $5, $6, NULLIF($7,''), $8, $9, $10, $11, $12, $13, now())
 		ON CONFLICT (id) DO UPDATE SET
 			target_backend_plugin_id    = EXCLUDED.target_backend_plugin_id,
 			target_backend_installation_id = EXCLUDED.target_backend_installation_id,
+			target_request_provider_plugin_id = EXCLUDED.target_request_provider_plugin_id,
+			target_request_provider_installation_id = EXCLUDED.target_request_provider_installation_id,
 			auto_approve_requests       = EXCLUDED.auto_approve_requests,
 			streaming_mode              = EXCLUDED.streaming_mode,
 			cache_dir                   = COALESCE(EXCLUDED.cache_dir, backend_config.cache_dir),
@@ -137,6 +164,7 @@ func (s *Store) UpdateBackendConfig(ctx context.Context, cfg BackendConfig) erro
 			updated_at                  = now()
 	`,
 		cfg.TargetBackendPluginID, cfg.TargetBackendInstallID,
+		cfg.TargetRequestPluginID, cfg.TargetRequestInstallID,
 		cfg.AutoApproveRequests, cfg.StreamingMode,
 		cfg.CacheDir, cfg.CacheMaxSizeGB, cfg.CacheDownloadConcurrency, remaps,
 		cfg.ABSJWTSecret, cfg.ABSAccessTTLHours, cfg.ABSRefreshTTLDays,

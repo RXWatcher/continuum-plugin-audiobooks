@@ -53,9 +53,9 @@ func (s *Server) handleCreateMyRequest(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "backend config missing")
 		return
 	}
-	targetPluginID := cfg.BackendPluginID()
+	targetPluginID := cfg.RequestProviderPluginID()
 	if targetPluginID == "" {
-		writeError(w, http.StatusPreconditionFailed, "no backend configured")
+		writeError(w, http.StatusPreconditionFailed, "no request provider configured")
 		return
 	}
 	reqID := ulid.Make().String()

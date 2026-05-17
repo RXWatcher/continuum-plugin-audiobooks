@@ -129,6 +129,9 @@ export interface LibraryInfo {
 
 export interface BackendConfig {
   target_backend_plugin_id: string;
+  target_backend_installation_id?: string;
+  target_request_provider_plugin_id: string;
+  target_request_provider_installation_id?: string;
   auto_approve_requests: boolean;
   streaming_mode: 'proxy' | 'cache' | 'direct';
   cache_dir: string;
