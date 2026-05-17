@@ -699,29 +699,35 @@ type syncPayload struct {
 }
 
 func (h *Handler) handleSessionSync(w http.ResponseWriter, r *http.Request) {
-	a, _ := absAuthFrom(r)
+	a, ok := absAuthFrom(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	sid := chi.URLParam(r, "sid")
 	var p syncPayload
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil {
 		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
 	}
+	// Ownership gate: a session id (ULID) must belong to the caller. Fetch
+	// first and verify owner so a user can't update/seed-progress-from
+	// another user's session (IDOR). 404 (not 403) so existence isn't
+	// leaked.
+	sess, err := h.store.GetABSSession(r.Context(), sid)
+	if err != nil || sess.UserID != a.UserID {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
 	if err := h.store.UpdateABSSession(r.Context(), sid, int(p.CurrentTime)); err != nil {
-		if errors.Is(err, store.ErrNotFound) {
-			http.Error(w, "session not found", http.StatusNotFound)
-			return
-		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	// Mirror to progress.
-	sess, err := h.store.GetABSSession(r.Context(), sid)
-	if err == nil {
-		_ = h.store.UpsertProgress(r.Context(), store.Progress{
-			UserID: a.UserID, BookID: sess.BookID,
-			CurrentSeconds: int(p.CurrentTime),
-		})
-	}
+	// Mirror to progress (sess.BookID is now verified to belong to a.UserID).
+	_ = h.store.UpsertProgress(r.Context(), store.Progress{
+		UserID: a.UserID, BookID: sess.BookID,
+		CurrentSeconds: int(p.CurrentTime),
+	})
 
 	resp := map[string]any{"ok": true}
 
@@ -757,7 +763,19 @@ func (h *Handler) handleSessionSync(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) handleSessionClose(w http.ResponseWriter, r *http.Request) {
+	a, ok := absAuthFrom(r)
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	sid := chi.URLParam(r, "sid")
+	// Only the owning user may close their session (IDOR guard). Admins use
+	// the separate /admin path which intentionally closes any session.
+	sess, err := h.store.GetABSSession(r.Context(), sid)
+	if err != nil || sess.UserID != a.UserID {
+		http.Error(w, "session not found", http.StatusNotFound)
+		return
+	}
 	_ = h.store.CloseABSSession(r.Context(), sid)
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -790,6 +808,12 @@ func (h *Handler) handlePublicTrack(w http.ResponseWriter, r *http.Request) {
 	sess, err := h.store.GetABSSession(r.Context(), sid)
 	if err != nil || sess.ClosedAt != nil {
 		http.Error(w, "session closed or missing", http.StatusGone)
+		return
+	}
+	// Bind the capability token to the session row: it must have been minted
+	// for this session's user and book, not merely any valid session token.
+	if claims.UserID != sess.UserID || (claims.BookID != "" && claims.BookID != sess.BookID) {
+		http.Error(w, "invalid session token", http.StatusUnauthorized)
 		return
 	}
 	lib, backendBookID, _, err := h.portalLibraryForBookRef(r.Context(), sess.BookID)

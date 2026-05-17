@@ -121,25 +121,31 @@ func (s *Store) ListPublicCollections(ctx context.Context, limit int) ([]Collect
 	return collectCollections(rows)
 }
 
-// AddCollectionItem appends an item with monotonic position.
-func (s *Store) AddCollectionItem(ctx context.Context, collectionID, bookID string) error {
+// AddCollectionItem appends an item with monotonic position. The insert is
+// gated on the collection being owned by ownerID, so a user can't write into
+// another user's collection by guessing its id (IDOR).
+func (s *Store) AddCollectionItem(ctx context.Context, collectionID, bookID, ownerID string) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO collection_item (collection_id, book_id, position)
-		VALUES ($1, $2,
-			(SELECT COALESCE(MAX(position),0) + 1 FROM collection_item WHERE collection_id = $1))
+		SELECT $1, $2,
+			COALESCE((SELECT MAX(position) FROM collection_item WHERE collection_id = $1), 0) + 1
+		WHERE EXISTS (SELECT 1 FROM collection WHERE id = $1 AND user_id = $3)
 		ON CONFLICT (collection_id, book_id) DO NOTHING
-	`, collectionID, bookID)
+	`, collectionID, bookID, ownerID)
 	if err != nil {
 		return fmt.Errorf("add collection item: %w", err)
 	}
 	return nil
 }
 
-// RemoveCollectionItem deletes a (collection, book) row.
-func (s *Store) RemoveCollectionItem(ctx context.Context, collectionID, bookID string) error {
+// RemoveCollectionItem deletes a (collection, book) row, only from a
+// collection owned by ownerID.
+func (s *Store) RemoveCollectionItem(ctx context.Context, collectionID, bookID, ownerID string) error {
 	_, err := s.pool.Exec(ctx,
-		`DELETE FROM collection_item WHERE collection_id = $1 AND book_id = $2`,
-		collectionID, bookID)
+		`DELETE FROM collection_item
+		 WHERE collection_id = $1 AND book_id = $2
+		   AND collection_id IN (SELECT id FROM collection WHERE id = $1 AND user_id = $3)`,
+		collectionID, bookID, ownerID)
 	if err != nil {
 		return fmt.Errorf("remove collection item: %w", err)
 	}
@@ -147,12 +153,18 @@ func (s *Store) RemoveCollectionItem(ctx context.Context, collectionID, bookID s
 }
 
 // ListCollectionItems returns the items in a collection, ordered by position.
-func (s *Store) ListCollectionItems(ctx context.Context, collectionID string) ([]CollectionItem, error) {
+// Visible only to the owner, or to anyone when the collection is public.
+func (s *Store) ListCollectionItems(ctx context.Context, collectionID, viewerID string) ([]CollectionItem, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT collection_id, book_id, position, added_at
-		FROM collection_item WHERE collection_id = $1
+		FROM collection_item
+		WHERE collection_id = $1
+		  AND collection_id IN (
+		      SELECT id FROM collection
+		      WHERE id = $1 AND (user_id = $2 OR is_public)
+		  )
 		ORDER BY position ASC
-	`, collectionID)
+	`, collectionID, viewerID)
 	if err != nil {
 		return nil, fmt.Errorf("list collection items: %w", err)
 	}

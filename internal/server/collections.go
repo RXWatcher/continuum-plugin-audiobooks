@@ -130,11 +130,12 @@ func (s *Server) handleDeleteCollection(w http.ResponseWriter, r *http.Request) 
 }
 
 func (s *Server) handleListCollectionItems(w http.ResponseWriter, r *http.Request) {
-	if _, ok := auth.RequireUser(w, r); !ok {
+	id, ok := auth.RequireUser(w, r)
+	if !ok {
 		return
 	}
 	collID := chi.URLParam(r, "id")
-	out, err := s.d.Store.ListCollectionItems(r.Context(), collID)
+	out, err := s.d.Store.ListCollectionItems(r.Context(), collID, id.UserID)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -147,7 +148,8 @@ type collItemPayload struct {
 }
 
 func (s *Server) handleAddCollectionItem(w http.ResponseWriter, r *http.Request) {
-	if _, ok := auth.RequireUser(w, r); !ok {
+	id, ok := auth.RequireUser(w, r)
+	if !ok {
 		return
 	}
 	collID := chi.URLParam(r, "id")
@@ -156,7 +158,7 @@ func (s *Server) handleAddCollectionItem(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "book_id required")
 		return
 	}
-	if err := s.d.Store.AddCollectionItem(r.Context(), collID, p.BookID); err != nil {
+	if err := s.d.Store.AddCollectionItem(r.Context(), collID, p.BookID, id.UserID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
@@ -164,12 +166,13 @@ func (s *Server) handleAddCollectionItem(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleRemoveCollectionItem(w http.ResponseWriter, r *http.Request) {
-	if _, ok := auth.RequireUser(w, r); !ok {
+	id, ok := auth.RequireUser(w, r)
+	if !ok {
 		return
 	}
 	collID := chi.URLParam(r, "id")
 	bookID := chi.URLParam(r, "book_id")
-	if err := s.d.Store.RemoveCollectionItem(r.Context(), collID, bookID); err != nil {
+	if err := s.d.Store.RemoveCollectionItem(r.Context(), collID, bookID, id.UserID); err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
