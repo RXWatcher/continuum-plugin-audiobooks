@@ -58,8 +58,9 @@ func serveIndex(w http.ResponseWriter, r *http.Request) {
 	}
 	htmlBody := string(data)
 	if strings.HasPrefix(r.URL.Path, "/admin") {
-		htmlBody = strings.ReplaceAll(htmlBody, `src="./assets/`, `src="../assets/`)
-		htmlBody = strings.ReplaceAll(htmlBody, `href="./assets/`, `href="../assets/`)
+		prefix := adminAssetPrefix(r.URL.Path)
+		htmlBody = strings.ReplaceAll(htmlBody, `src="./assets/`, `src="`+prefix)
+		htmlBody = strings.ReplaceAll(htmlBody, `href="./assets/`, `href="`+prefix)
 	}
 	theme := r.URL.Query().Get("theme")
 	if theme == "" {
@@ -79,4 +80,11 @@ func serveIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write([]byte(htmlBody))
+}
+
+func adminAssetPrefix(requestPath string) string {
+	if requestPath == "/admin" || requestPath == "/" {
+		return "assets/"
+	}
+	return "../assets/"
 }
