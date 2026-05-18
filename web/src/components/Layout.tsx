@@ -1,12 +1,14 @@
-import { Outlet, NavLink } from 'react-router';
+import { Outlet, NavLink, useLocation } from 'react-router';
 import { ArrowLeft, BookHeadphones, Layers, Library, Smartphone, ListChecks, Settings } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { isAdmin } from '@/lib/identity';
 
-const backToContinuumHref = '/';
-
 export default function Layout() {
+  const loc = useLocation();
   const admin = isAdmin();
+  const isAdminRoute = loc.pathname.startsWith('/admin');
+  const backToContinuumHref = isAdminRoute ? '/admin/plugins' : '/';
+  const backToContinuumTitle = isAdminRoute ? 'Back to Continuum plugins' : 'Back to Continuum';
 
   return (
     <div className="bg-background relative min-h-[100dvh] overflow-x-hidden">
@@ -17,7 +19,7 @@ export default function Layout() {
           <a
             href={backToContinuumHref}
             className="text-muted-foreground hover:bg-surface-hover hover:text-foreground inline-flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors"
-            title="Back to Continuum"
+            title={backToContinuumTitle}
           >
             <ArrowLeft className="size-4" />
             <span className="hidden sm:inline">Continuum</span>
