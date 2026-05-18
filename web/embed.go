@@ -5,8 +5,10 @@ package web
 
 import (
 	"embed"
+	"html"
 	"io/fs"
 	"net/http"
+	"strings"
 )
 
 //go:embed all:dist
@@ -30,6 +32,10 @@ func FS() http.FileSystem { return http.FS(FSEmbed()) }
 func SPAHandler() http.Handler {
 	fileSrv := http.FileServer(FS())
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isSPARequest(r.URL.Path) {
+			serveIndex(w, r)
+			return
+		}
 		f, err := FS().Open(r.URL.Path)
 		if err != nil {
 			r.URL.Path = "/"
@@ -38,4 +44,39 @@ func SPAHandler() http.Handler {
 		}
 		fileSrv.ServeHTTP(w, r)
 	})
+}
+
+func isSPARequest(path string) bool {
+	return path == "/" || path == "/admin" || path == "/admin/" || strings.HasPrefix(path, "/admin/")
+}
+
+func serveIndex(w http.ResponseWriter, r *http.Request) {
+	data, err := fs.ReadFile(FSEmbed(), "index.html")
+	if err != nil {
+		http.Error(w, "spa not available", http.StatusServiceUnavailable)
+		return
+	}
+	htmlBody := string(data)
+	if strings.HasPrefix(r.URL.Path, "/admin") {
+		htmlBody = strings.ReplaceAll(htmlBody, `src="./assets/`, `src="../assets/`)
+		htmlBody = strings.ReplaceAll(htmlBody, `href="./assets/`, `href="../assets/`)
+	}
+	theme := r.URL.Query().Get("theme")
+	if theme == "" {
+		theme = r.Header.Get("X-Continuum-Theme")
+	}
+	if theme == "" {
+		theme = r.Header.Get("X-Continuum-User-Theme")
+	}
+	if theme != "" {
+		safe := html.EscapeString(theme)
+		if strings.Contains(htmlBody, `<html lang="en">`) {
+			htmlBody = strings.Replace(htmlBody, `<html lang="en">`, `<html lang="en" data-theme="`+safe+`">`, 1)
+		} else if strings.Contains(htmlBody, `<html`) {
+			htmlBody = strings.Replace(htmlBody, `<html`, `<html data-theme="`+safe+`"`, 1)
+		}
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte(htmlBody))
 }
