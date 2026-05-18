@@ -1,6 +1,6 @@
 {
   "plugin_id": "continuum.audiobooks",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "checksum": "__CHECKSUM__",
   "continuum_api_version": "v1",
   "capabilities": [
@@ -36,14 +36,57 @@
     }
   ],
   "http_routes": [
-    {"id": "api",          "method": "*",   "path": "/api/v1/*",                "access": "authenticated"},
-    {"id": "abs_public",   "method": "GET", "path": "/abs/public/*",            "access": "public"},
-    {"id": "abs_login",    "method": "POST","path": "/abs/api/login",           "access": "public"},
-    {"id": "abs_refresh",  "method": "POST","path": "/abs/api/auth/refresh",    "access": "public"},
-    {"id": "abs_ping",     "method": "GET", "path": "/abs/api/ping",            "access": "public"},
-    {"id": "abs",          "method": "*",   "path": "/abs/*",                   "access": "authenticated"},
-    {"id": "assets",       "method": "GET", "path": "/assets/*",                "access": "public"},
-    {"id": "spa",          "method": "GET", "path": "/*",                       "access": "authenticated", "navigable": true, "navigation_label": "Audiobooks", "navigation_kind": "user"}
+    {
+      "id": "api",
+      "method": "*",
+      "path": "/api/v1/*",
+      "access": "authenticated"
+    },
+    {
+      "id": "abs_public",
+      "method": "GET",
+      "path": "/abs/public/*",
+      "access": "public"
+    },
+    {
+      "id": "abs_login",
+      "method": "POST",
+      "path": "/abs/api/login",
+      "access": "public"
+    },
+    {
+      "id": "abs_refresh",
+      "method": "POST",
+      "path": "/abs/api/auth/refresh",
+      "access": "public"
+    },
+    {
+      "id": "abs_ping",
+      "method": "GET",
+      "path": "/abs/api/ping",
+      "access": "public"
+    },
+    {
+      "id": "abs",
+      "method": "*",
+      "path": "/abs/*",
+      "access": "authenticated"
+    },
+    {
+      "id": "assets",
+      "method": "GET",
+      "path": "/assets/*",
+      "access": "public"
+    },
+    {
+      "id": "spa",
+      "method": "GET",
+      "path": "/*",
+      "access": "authenticated",
+      "navigable": true,
+      "navigation_label": "Audiobooks",
+      "navigation_kind": "user"
+    }
   ],
   "global_config_schema": [
     {
@@ -54,7 +97,13 @@
       "required": true,
       "admin_form": {
         "fields": [
-          {"key": "value", "label": "Connection URL", "control": "ADMIN_FORM_CONTROL_PASSWORD", "required": true, "secret": true}
+          {
+            "key": "value",
+            "label": "Connection URL",
+            "control": "ADMIN_FORM_CONTROL_PASSWORD",
+            "required": true,
+            "secret": true
+          }
         ]
       }
     },
@@ -65,7 +114,11 @@
       "json_schema": "{\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"string\"}}}",
       "admin_form": {
         "fields": [
-          {"key": "value", "label": "Listen address", "control": "ADMIN_FORM_CONTROL_TEXT"}
+          {
+            "key": "value",
+            "label": "Listen address",
+            "control": "ADMIN_FORM_CONTROL_TEXT"
+          }
         ]
       }
     },
@@ -76,7 +129,11 @@
       "json_schema": "{\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"string\"}}}",
       "admin_form": {
         "fields": [
-          {"key": "value", "label": "CDN hostname", "control": "ADMIN_FORM_CONTROL_TEXT"}
+          {
+            "key": "value",
+            "label": "CDN hostname",
+            "control": "ADMIN_FORM_CONTROL_TEXT"
+          }
         ]
       }
     },
@@ -87,7 +144,12 @@
       "json_schema": "{\"type\":\"object\",\"properties\":{\"value\":{\"type\":\"string\"}}}",
       "admin_form": {
         "fields": [
-          {"key": "value", "label": "Base64 secret", "control": "ADMIN_FORM_CONTROL_PASSWORD", "secret": true}
+          {
+            "key": "value",
+            "label": "Base64 secret",
+            "control": "ADMIN_FORM_CONTROL_PASSWORD",
+            "secret": true
+          }
         ]
       }
     }
