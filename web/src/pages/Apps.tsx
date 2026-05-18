@@ -22,12 +22,12 @@ export default function Apps() {
           <li>Log in with your Continuum username + password.</li>
           <li>Your audiobooks library will sync automatically.</li>
         </ol>
-        <div className="flex gap-4 pt-2 text-sm">
+        <div className="flex flex-wrap gap-3 pt-2 text-sm">
           <a
             href="https://apps.apple.com/us/app/audiobookshelf/id1610126326"
             target="_blank"
             rel="noreferrer"
-            className="text-primary inline-flex items-center gap-1 underline"
+            className="text-primary inline-flex min-h-9 items-center gap-1 underline"
           >
             <Apple className="size-4" /> iOS App Store
           </a>
@@ -35,7 +35,7 @@ export default function Apps() {
             href="https://play.google.com/store/apps/details?id=com.audiobookshelf.app"
             target="_blank"
             rel="noreferrer"
-            className="text-primary inline-flex items-center gap-1 underline"
+            className="text-primary inline-flex min-h-9 items-center gap-1 underline"
           >
             Google Play
           </a>

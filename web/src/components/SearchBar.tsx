@@ -13,14 +13,14 @@ export default function SearchBar() {
         if (!trimmed) return;
         navigate(`/?q=${encodeURIComponent(trimmed)}`);
       }}
-      className="bg-surface focus-within:ring-ring/30 flex items-center gap-2 rounded-lg border px-3 py-1.5 focus-within:ring-2"
+      className="bg-surface focus-within:ring-ring/30 flex min-h-10 items-center gap-2 rounded-lg border px-3 py-1.5 focus-within:ring-2"
     >
       <Search className="text-muted-foreground size-4" />
       <input
         value={q}
         onChange={(e) => setQ(e.target.value)}
         placeholder="Search audiobooks..."
-        className="placeholder:text-muted-foreground w-full bg-transparent text-sm outline-none"
+        className="placeholder:text-muted-foreground min-h-9 w-full bg-transparent text-sm outline-none"
       />
     </form>
   );

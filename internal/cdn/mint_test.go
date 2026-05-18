@@ -10,7 +10,7 @@ import (
 )
 
 func TestMintStreamToken_Verifiable(t *testing.T) {
-	secret := []byte("test-secret-32-bytes-please-aaaaa")
+	secret := []byte("0123456789abcdef0123456789abcdef")
 	tok, err := cdn.MintStreamToken(secret, "user-1", "book-abc", 0, 5*time.Minute)
 	if err != nil {
 		t.Fatalf("MintStreamToken: %v", err)
@@ -32,6 +32,31 @@ func TestMintStreamToken_Verifiable(t *testing.T) {
 func TestMintStreamToken_EmptySecret_Errors(t *testing.T) {
 	if _, err := cdn.MintStreamToken(nil, "u", "b", 0, time.Minute); err == nil {
 		t.Fatal("expected error on empty secret")
+	}
+}
+
+func TestMintStreamToken_RejectsInvalidInputs(t *testing.T) {
+	secret := []byte("0123456789abcdef0123456789abcdef")
+	cases := []struct {
+		name    string
+		secret  []byte
+		userID  string
+		bookID  string
+		fileIdx int
+		ttl     time.Duration
+	}{
+		{"short secret", []byte("short"), "u", "b", 0, time.Minute},
+		{"missing user", secret, "", "b", 0, time.Minute},
+		{"missing book", secret, "u", "", 0, time.Minute},
+		{"negative file", secret, "u", "b", -1, time.Minute},
+		{"zero ttl", secret, "u", "b", 0, 0},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if _, err := cdn.MintStreamToken(tc.secret, tc.userID, tc.bookID, tc.fileIdx, tc.ttl); err == nil {
+				t.Fatal("expected error")
+			}
+		})
 	}
 }
 

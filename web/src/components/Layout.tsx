@@ -16,7 +16,7 @@ export default function Layout() {
         <div className="flex items-center gap-3">
           <a
             href={backToContinuumHref}
-            className="text-muted-foreground hover:bg-surface-hover hover:text-foreground inline-flex items-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors"
+            className="text-muted-foreground hover:bg-surface-hover hover:text-foreground inline-flex min-h-9 min-w-9 items-center justify-center gap-1.5 rounded-lg px-2 py-1.5 text-xs font-medium transition-colors"
             title="Back to Continuum"
           >
             <ArrowLeft className="size-4" />
@@ -69,7 +69,7 @@ function NavItem({
       end={exact}
       className={({ isActive }) =>
         cn(
-          'inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
+          'inline-flex min-h-9 items-center justify-center gap-2 rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
           isActive
             ? 'bg-surface text-foreground'
             : 'text-muted-foreground hover:bg-surface-hover hover:text-foreground',

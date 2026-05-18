@@ -100,7 +100,10 @@ func main() {
 		// Initialize backend_config singleton with a random JWT secret on
 		// first Configure.
 		secret := make([]byte, 32)
-		_, _ = rand.Read(secret)
+		if _, err := rand.Read(secret); err != nil {
+			p.Close()
+			return fmt.Errorf("generate abs jwt secret: %w", err)
+		}
 		bcfg, err := st.EnsureBackendConfig(ctx, secret)
 		if err != nil {
 			p.Close()

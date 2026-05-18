@@ -22,8 +22,20 @@ const audience = "local_audiobooks"
 // tokens with the wrong audience, mismatched book/file binding, or
 // expired exp.
 func MintStreamToken(secret []byte, userID, bookID string, fileIdx int, ttl time.Duration) (string, error) {
-	if len(secret) == 0 {
-		return "", errors.New("empty signing secret")
+	if len(secret) < 32 {
+		return "", errors.New("signing secret must be at least 32 bytes")
+	}
+	if userID == "" {
+		return "", errors.New("user id required")
+	}
+	if bookID == "" {
+		return "", errors.New("book id required")
+	}
+	if fileIdx < 0 {
+		return "", errors.New("file index must be non-negative")
+	}
+	if ttl <= 0 {
+		return "", errors.New("ttl must be positive")
 	}
 	claims := jwt.MapClaims{
 		"sub":      userID,

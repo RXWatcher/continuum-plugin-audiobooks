@@ -3,8 +3,12 @@ package runtime
 
 import (
 	"context"
+	"encoding/base64"
 	"fmt"
 	"log/slog"
+	"net"
+	"net/url"
+	"strings"
 	"sync"
 
 	pluginv1 "github.com/ContinuumApp/continuum-plugin-sdk/pkg/pluginproto/continuum/plugin/v1"
@@ -89,6 +93,17 @@ func (s *Server) Configure(_ context.Context, req *pluginv1.ConfigureRequest) (*
 	if cfg.DatabaseURL == "" {
 		return nil, fmt.Errorf("database_url is required")
 	}
+	if cfg.CDNHostname != "" || cfg.CDNSigningSecret != "" {
+		if cfg.CDNHostname == "" || cfg.CDNSigningSecret == "" {
+			return nil, fmt.Errorf("cdn_hostname and cdn_signing_secret must be configured together")
+		}
+		if err := validateCDNHostname(cfg.CDNHostname); err != nil {
+			return nil, fmt.Errorf("cdn_hostname: %w", err)
+		}
+		if _, err := DecodeCDNSigningSecret(cfg.CDNSigningSecret); err != nil {
+			return nil, fmt.Errorf("cdn_signing_secret: %w", err)
+		}
+	}
 	if s.onCfg != nil {
 		if err := s.onCfg(cfg); err != nil {
 			return nil, err
@@ -98,6 +113,39 @@ func (s *Server) Configure(_ context.Context, req *pluginv1.ConfigureRequest) (*
 	s.cfg = cfg
 	s.mu.Unlock()
 	return &pluginv1.ConfigureResponse{}, nil
+}
+
+// DecodeCDNSigningSecret decodes the manifest-documented 32-byte base64 HMAC
+// secret shared with local-audiobooks.
+func DecodeCDNSigningSecret(raw string) ([]byte, error) {
+	secret, err := base64.StdEncoding.DecodeString(raw)
+	if err != nil {
+		return nil, err
+	}
+	if len(secret) != 32 {
+		return nil, fmt.Errorf("decoded secret must be 32 bytes")
+	}
+	return secret, nil
+}
+
+func validateCDNHostname(raw string) error {
+	if strings.TrimSpace(raw) != raw || raw == "" {
+		return fmt.Errorf("must be a bare hostname")
+	}
+	if strings.Contains(raw, "://") || strings.ContainsAny(raw, "/?#") {
+		return fmt.Errorf("must not include scheme, path, query, or fragment")
+	}
+	u, err := url.Parse("https://" + raw)
+	if err != nil || u.Hostname() == "" {
+		return fmt.Errorf("invalid hostname")
+	}
+	if u.User != nil {
+		return fmt.Errorf("must not include credentials")
+	}
+	if ip := net.ParseIP(u.Hostname()); ip != nil && ip.IsUnspecified() {
+		return fmt.Errorf("must not be an unspecified address")
+	}
+	return nil
 }
 
 // Snapshot returns a copy of the current config.
