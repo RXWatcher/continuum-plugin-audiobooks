@@ -1,7 +1,6 @@
 package server
 
 import (
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -28,7 +27,6 @@ func (s *Server) mountAdminRoutes(r chi.Router) {
 	r.Post("/admin/sessions/{id}/close", s.handleAdminCloseSession)
 	r.Get("/admin/tokens", s.handleAdminListTokens)
 	r.Post("/admin/tokens/{id}/revoke", s.handleAdminRevokeToken)
-	r.Post("/admin/generate-streaming-secret", s.handleGenerateStreamingSecret)
 }
 
 func (s *Server) handleGetBackendConfig(w http.ResponseWriter, r *http.Request) {
@@ -56,6 +54,7 @@ func (s *Server) handleGetBackendConfig(w http.ResponseWriter, r *http.Request) 
 		"path_remappings":                         cfg.PathRemappings,
 		"abs_access_token_ttl_hours":              cfg.ABSAccessTTLHours,
 		"abs_refresh_token_ttl_days":              cfg.ABSRefreshTTLDays,
+		"standalone_http_listen":                  cfg.StandaloneHTTPListen,
 		"libraries":                               libs,
 	})
 }
@@ -73,6 +72,7 @@ type backendConfigPayload struct {
 	PathRemappings           *[]store.PathRemap `json:"path_remappings"`
 	ABSAccessTTLHours        *int               `json:"abs_access_token_ttl_hours"`
 	ABSRefreshTTLDays        *int               `json:"abs_refresh_token_ttl_days"`
+	StandaloneHTTPListen     *string            `json:"standalone_http_listen"`
 	RotateABSSecret          bool               `json:"rotate_abs_secret"`
 }
 
@@ -125,6 +125,9 @@ func (s *Server) handleUpdateBackendConfig(w http.ResponseWriter, r *http.Reques
 	}
 	if p.ABSRefreshTTLDays != nil {
 		cur.ABSRefreshTTLDays = *p.ABSRefreshTTLDays
+	}
+	if p.StandaloneHTTPListen != nil {
+		cur.StandaloneHTTPListen = *p.StandaloneHTTPListen
 	}
 	if p.RotateABSSecret {
 		secret, err := randomBytes(32)
@@ -325,22 +328,4 @@ func (s *Server) handleAdminRevokeToken(w http.ResponseWriter, r *http.Request) 
 	// No token with this id: return 404 instead of a misleading 204 that
 	// would tell the admin a revoke succeeded when nothing was revoked.
 	writeError(w, http.StatusNotFound, "token not found")
-}
-
-// handleGenerateStreamingSecret generates a cryptographically-random 32-byte
-// value and returns it base64-encoded. The admin pastes this value into both
-// this plugin's cdn_signing_secret global config and the local audiobooks
-// plugin's stream_signing_secret config. Nothing is persisted here — the admin is
-// responsible for saving the value.
-func (s *Server) handleGenerateStreamingSecret(w http.ResponseWriter, r *http.Request) {
-	if _, ok := auth.RequireAdmin(w, r); !ok {
-		return
-	}
-	b, err := randomBytes(32)
-	if err != nil {
-		writeInternal(w, r, err)
-		return
-	}
-	secret := base64.StdEncoding.EncodeToString(b)
-	writeJSON(w, http.StatusOK, map[string]string{"secret": secret})
 }

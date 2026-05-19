@@ -345,11 +345,6 @@ export const api = {
     authedFetch(`${apiBase()}/admin/tokens/${encodeURIComponent(id)}/revoke`, {
       method: 'POST',
     }).then(noContentOrThrow),
-
-  adminGenerateStreamingSecret: () =>
-    authedFetch(`${apiBase()}/admin/generate-streaming-secret`, {
-      method: 'POST',
-    }).then(jsonOrThrow<{ secret: string }>),
 };
 
 export const _internals = { apiBase };

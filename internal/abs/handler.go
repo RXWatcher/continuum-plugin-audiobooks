@@ -2,7 +2,6 @@ package abs
 
 import (
 	"context"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"net/http"
@@ -15,7 +14,6 @@ import (
 
 	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/backend"
 	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/bookref"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/cdn"
 	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/store"
 )
 
@@ -27,7 +25,6 @@ type Handler struct {
 	targetFn   func(ctx context.Context) (string, store.BackendConfig, error)
 	hostBaseFn func() string
 	installID  func() string // current plugin install ID for building public URLs
-	cdnFn      func() (hostname, signingSecret string)
 }
 
 // Logger is a minimal interface to keep Handler decoupled from hclog.
@@ -50,11 +47,6 @@ type Deps struct {
 	TargetFn   func(ctx context.Context) (string, store.BackendConfig, error)
 	HostBaseFn func() string
 	InstallID  func() string
-	// CDNFn returns the CDN hostname and base64-encoded signing secret from
-	// the plugin's global runtime config. When both are non-empty, handlePlay
-	// and handleSessionSync emit presigned CDN URLs instead of portal-relative
-	// session URLs. If CDNFn is nil the portal falls back to the non-CDN path.
-	CDNFn func() (hostname, signingSecret string)
 }
 
 // NewHandler builds a handler.
@@ -68,13 +60,9 @@ func NewHandler(d Deps) *Handler {
 	if d.InstallID == nil {
 		d.InstallID = func() string { return "continuum.audiobooks" }
 	}
-	if d.CDNFn == nil {
-		d.CDNFn = func() (string, string) { return "", "" }
-	}
 	return &Handler{
 		store: d.Store, backend: d.Backend, logger: d.Logger,
 		targetFn: d.TargetFn, hostBaseFn: d.HostBaseFn, installID: d.InstallID,
-		cdnFn: d.CDNFn,
 	}
 }
 
@@ -674,32 +662,14 @@ func (h *Handler) handlePlay(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Build session-scoped contentURL per track.
-	cdnHostname, cdnSecretB64 := h.cdnFn()
-	useCDN := cdnHostname != "" && cdnSecretB64 != ""
-	var cdnSecret []byte
-	if useCDN {
-		var decErr error
-		cdnSecret, decErr = base64.StdEncoding.DecodeString(cdnSecretB64)
-		if decErr != nil || len(cdnSecret) == 0 {
-			// Misconfigured secret — fall back to portal proxy path.
-			useCDN = false
-		}
-	}
-
 	hostBase := h.hostBaseFn()
 	installID := h.installID()
 	tracks := make([]AudioTrack, len(d.Files))
 	for i, f := range d.Files {
-		var trackURL string
-		if useCDN {
-			tok, _ := cdn.MintStreamToken(cdnSecret, a.UserID, encodedBookID, f.Index, 5*time.Minute)
-			trackURL = cdn.PresignedURL(cdnHostname, encodedBookID, f.Index, tok)
-		} else {
-			tok, _ := IssueSessionToken(cfg.ABSJWTSecret, a.UserID, sessionID, encodedBookID, f.Index, 6*time.Hour)
-			trackURL = hostBase + "/api/v1/plugins/" + installID +
-				"/abs/public/session/" + sessionID + "/track/" + strconv.Itoa(f.Index) +
-				"?token=" + tok
-		}
+		tok, _ := IssueSessionToken(cfg.ABSJWTSecret, a.UserID, sessionID, encodedBookID, f.Index, 6*time.Hour)
+		trackURL := hostBase + "/api/v1/plugins/" + installID +
+			"/abs/public/session/" + sessionID + "/track/" + strconv.Itoa(f.Index) +
+			"?token=" + tok
 		tracks[i] = AudioTrack{
 			Index:      f.Index,
 			ContentURL: trackURL,
@@ -753,35 +723,6 @@ func (h *Handler) handleSessionSync(w http.ResponseWriter, r *http.Request) {
 	_ = h.store.UpdateProgressPosition(r.Context(), a.UserID, sess.BookID, int(p.CurrentTime))
 
 	resp := map[string]any{"ok": true}
-
-	// In CDN mode, return freshly-minted track URLs so the client can keep
-	// streaming past the 5-minute presigned token window without re-calling
-	// /play. We only do this when we can also fetch the book detail.
-	cdnHostname, cdnSecretB64 := h.cdnFn()
-	if cdnHostname != "" && cdnSecretB64 != "" && err == nil {
-		cdnSecret, decErr := base64.StdEncoding.DecodeString(cdnSecretB64)
-		if decErr == nil && len(cdnSecret) > 0 {
-			lib, backendBookID, encodedBookID, targetErr := h.portalLibraryForBookRef(r.Context(), sess.BookID)
-			if targetErr == nil && lib.BackendPluginID != "" {
-				d, detailErr := h.backend.GetDetail(r.Context(), a.Token, lib.BackendPluginID, backendBookID)
-				if detailErr == nil {
-					tracks := make([]AudioTrack, len(d.Files))
-					for i, f := range d.Files {
-						tok, _ := cdn.MintStreamToken(cdnSecret, a.UserID, encodedBookID, f.Index, 5*time.Minute)
-						tracks[i] = AudioTrack{
-							Index:      f.Index,
-							ContentURL: cdn.PresignedURL(cdnHostname, encodedBookID, f.Index, tok),
-							MimeType:   f.MimeType,
-							Duration:   float64(f.DurationSeconds),
-							Codec:      f.Format,
-						}
-					}
-					resp["audioTracks"] = tracks
-				}
-			}
-		}
-	}
-
 	writeJSON(w, http.StatusOK, resp)
 }
 

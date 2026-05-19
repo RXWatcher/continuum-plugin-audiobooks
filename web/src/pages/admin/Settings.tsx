@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -16,12 +16,6 @@ import {
 } from '@/components/ui/select';
 import type { BackendConfig, InstalledBackend, LibraryInfo } from '@/api/types';
 
-type SecretState =
-  | { status: 'idle' }
-  | { status: 'generating' }
-  | { status: 'ready'; secret: string }
-  | { status: 'error'; message: string };
-
 const MODES = ['proxy', 'cache', 'direct'] as const;
 const MEDIA_TYPES = ['audiobook', 'podcast', 'audio drama', 'lecture'] as const;
 
@@ -32,9 +26,6 @@ export default function AdminSettings() {
   const libraries = useQuery({ queryKey: ['admin', 'libraries'], queryFn: () => api.adminListLibraries() });
   const [form, setForm] = useState<BackendConfig | null>(null);
   const [draftLibraries, setDraftLibraries] = useState<LibraryInfo[]>([]);
-  const [secretState, setSecretState] = useState<SecretState>({ status: 'idle' });
-  const [copied, setCopied] = useState(false);
-  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     if (backend.data && !form) setForm(backend.data);
@@ -187,6 +178,13 @@ export default function AdminSettings() {
               onChange={(e) => update('abs_refresh_token_ttl_days', Number(e.target.value))}
             />
           </Field>
+          <Field label="Standalone listen address">
+            <Input
+              value={form.standalone_http_listen || ''}
+              onChange={(e) => update('standalone_http_listen', e.target.value)}
+              placeholder="127.0.0.1:9999"
+            />
+          </Field>
           <Button
             type="button"
             variant="outline"
@@ -195,63 +193,6 @@ export default function AdminSettings() {
           >
             Rotate ABS signing secret
           </Button>
-        </section>
-
-        <section className="bg-surface space-y-4 rounded-lg border p-6">
-          <h3 className="text-sm font-medium uppercase tracking-wide text-muted-foreground">
-            CDN signing
-          </h3>
-          <p className="text-sm text-muted-foreground">
-            Generate a shared HMAC secret for CDN-presigned streaming URLs. Paste it into this
-            plugin's <code>cdn_signing_secret</code> global config and the source backend's stream
-            verification secret.
-          </p>
-          <Button
-            type="button"
-            variant="outline"
-            disabled={secretState.status === 'generating'}
-            onClick={async () => {
-              setSecretState({ status: 'generating' });
-              setCopied(false);
-              try {
-                const { secret } = await api.adminGenerateStreamingSecret();
-                setSecretState({ status: 'ready', secret });
-              } catch (e) {
-                setSecretState({ status: 'error', message: `${e}` });
-              }
-            }}
-          >
-            {secretState.status === 'generating' ? 'Generating...' : 'Generate streaming secret'}
-          </Button>
-          {secretState.status === 'ready' && (
-            <div className="space-y-2">
-              <Label>Generated secret</Label>
-              <div className="flex gap-2">
-                <Input
-                  readOnly
-                  value={secretState.secret}
-                  className="font-mono text-xs"
-                  onFocus={(e) => e.currentTarget.select()}
-                />
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => {
-                    navigator.clipboard.writeText(secretState.secret).then(() => {
-                      setCopied(true);
-                      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
-                      copyTimeoutRef.current = setTimeout(() => setCopied(false), 2000);
-                    });
-                  }}
-                >
-                  {copied ? 'Copied' : 'Copy'}
-                </Button>
-              </div>
-            </div>
-          )}
-          {secretState.status === 'error' && (
-            <p className="text-sm text-destructive">{secretState.message}</p>
-          )}
         </section>
 
         <Button type="submit" disabled={saveBackend.isPending}>

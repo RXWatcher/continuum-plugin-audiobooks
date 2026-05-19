@@ -140,6 +140,7 @@ export interface BackendConfig {
   path_remappings: PathRemap[];
   abs_access_token_ttl_hours: number;
   abs_refresh_token_ttl_days: number;
+  standalone_http_listen: string;
   libraries?: LibraryInfo[];
 }
 

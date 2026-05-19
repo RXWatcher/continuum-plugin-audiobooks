@@ -3,12 +3,8 @@ package runtime
 
 import (
 	"context"
-	"encoding/base64"
 	"fmt"
 	"log/slog"
-	"net"
-	"net/url"
-	"strings"
 	"sync"
 
 	pluginv1 "github.com/ContinuumApp/continuum-plugin-sdk/pkg/pluginproto/continuum/plugin/v1"
@@ -21,27 +17,14 @@ import (
 type Config struct {
 	DatabaseURL          string `json:"database_url"`
 	StandaloneHTTPListen string `json:"standalone_http_listen"`
-	CDNHostname          string `json:"cdn_hostname"`
-	CDNSigningSecret     string `json:"cdn_signing_secret"`
-}
-
-// mask collapses a non-empty secret to a fixed marker so its length is not
-// revealed either.
-func mask(s string) string {
-	if s == "" {
-		return ""
-	}
-	return "***redacted***"
 }
 
 // LogValue implements slog.LogValuer so that slog.Any("cfg", cfg) never
-// serializes the CDN signing secret or the DSN (which embeds the DB password).
+// serializes the DSN (which embeds the DB password).
 func (c Config) LogValue() slog.Value {
 	return slog.GroupValue(
-		slog.String("database_url", mask(c.DatabaseURL)),
+		slog.String("database_url", "***redacted***"),
 		slog.String("standalone_http_listen", c.StandaloneHTTPListen),
-		slog.String("cdn_hostname", c.CDNHostname),
-		slog.String("cdn_signing_secret", mask(c.CDNSigningSecret)),
 	)
 }
 
@@ -84,25 +67,10 @@ func (s *Server) Configure(_ context.Context, req *pluginv1.ConfigureRequest) (*
 			cfg.DatabaseURL = stringFromValue(m["value"], firstString(m))
 		case "standalone_http_listen":
 			cfg.StandaloneHTTPListen = stringFromValue(m["value"], firstString(m))
-		case "cdn_hostname":
-			cfg.CDNHostname = stringFromValue(m["value"], firstString(m))
-		case "cdn_signing_secret":
-			cfg.CDNSigningSecret = stringFromValue(m["value"], firstString(m))
 		}
 	}
 	if cfg.DatabaseURL == "" {
 		return nil, fmt.Errorf("database_url is required")
-	}
-	if cfg.CDNHostname != "" || cfg.CDNSigningSecret != "" {
-		if cfg.CDNHostname == "" || cfg.CDNSigningSecret == "" {
-			return nil, fmt.Errorf("cdn_hostname and cdn_signing_secret must be configured together")
-		}
-		if err := validateCDNHostname(cfg.CDNHostname); err != nil {
-			return nil, fmt.Errorf("cdn_hostname: %w", err)
-		}
-		if _, err := DecodeCDNSigningSecret(cfg.CDNSigningSecret); err != nil {
-			return nil, fmt.Errorf("cdn_signing_secret: %w", err)
-		}
 	}
 	if s.onCfg != nil {
 		if err := s.onCfg(cfg); err != nil {
@@ -113,39 +81,6 @@ func (s *Server) Configure(_ context.Context, req *pluginv1.ConfigureRequest) (*
 	s.cfg = cfg
 	s.mu.Unlock()
 	return &pluginv1.ConfigureResponse{}, nil
-}
-
-// DecodeCDNSigningSecret decodes the manifest-documented 32-byte base64 HMAC
-// secret shared with local-audiobooks.
-func DecodeCDNSigningSecret(raw string) ([]byte, error) {
-	secret, err := base64.StdEncoding.DecodeString(raw)
-	if err != nil {
-		return nil, err
-	}
-	if len(secret) != 32 {
-		return nil, fmt.Errorf("decoded secret must be 32 bytes")
-	}
-	return secret, nil
-}
-
-func validateCDNHostname(raw string) error {
-	if strings.TrimSpace(raw) != raw || raw == "" {
-		return fmt.Errorf("must be a bare hostname")
-	}
-	if strings.Contains(raw, "://") || strings.ContainsAny(raw, "/?#") {
-		return fmt.Errorf("must not include scheme, path, query, or fragment")
-	}
-	u, err := url.Parse("https://" + raw)
-	if err != nil || u.Hostname() == "" {
-		return fmt.Errorf("invalid hostname")
-	}
-	if u.User != nil {
-		return fmt.Errorf("must not include credentials")
-	}
-	if ip := net.ParseIP(u.Hostname()); ip != nil && ip.IsUnspecified() {
-		return fmt.Errorf("must not be an unspecified address")
-	}
-	return nil
 }
 
 // Snapshot returns a copy of the current config.

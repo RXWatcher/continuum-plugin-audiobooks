@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"reflect"
 	"strings"
 	"time"
 
@@ -32,7 +33,12 @@ type BackendConfig struct {
 	ABSJWTSecret             []byte
 	ABSAccessTTLHours        int
 	ABSRefreshTTLDays        int
+	StandaloneHTTPListen     string
 	UpdatedAt                time.Time
+}
+
+type LegacyBackendConfig struct {
+	StandaloneHTTPListen string
 }
 
 func (c BackendConfig) BackendInstallID() string {
@@ -94,7 +100,8 @@ func (s *Store) GetBackendConfig(ctx context.Context) (BackendConfig, error) {
 		       auto_approve_requests, streaming_mode,
 		       COALESCE(cache_dir,''), cache_max_size_gb, cache_download_concurrency,
 		       path_remappings, abs_jwt_secret,
-		       abs_access_token_ttl_hours, abs_refresh_token_ttl_days, updated_at
+		       abs_access_token_ttl_hours, abs_refresh_token_ttl_days,
+		       COALESCE(standalone_http_listen,''), updated_at
 		FROM backend_config WHERE id = 1
 	`)
 	var cfg BackendConfig
@@ -105,7 +112,8 @@ func (s *Store) GetBackendConfig(ctx context.Context) (BackendConfig, error) {
 		&cfg.AutoApproveRequests, &cfg.StreamingMode,
 		&cfg.CacheDir, &cfg.CacheMaxSizeGB, &cfg.CacheDownloadConcurrency,
 		&remapsJSON, &cfg.ABSJWTSecret,
-		&cfg.ABSAccessTTLHours, &cfg.ABSRefreshTTLDays, &cfg.UpdatedAt,
+		&cfg.ABSAccessTTLHours, &cfg.ABSRefreshTTLDays,
+		&cfg.StandaloneHTTPListen, &cfg.UpdatedAt,
 	); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return BackendConfig{}, ErrNotFound
@@ -145,8 +153,9 @@ func (s *Store) UpdateBackendConfig(ctx context.Context, cfg BackendConfig) erro
 			 target_request_provider_plugin_id, target_request_provider_installation_id,
 			 auto_approve_requests, streaming_mode,
 			 cache_dir, cache_max_size_gb, cache_download_concurrency, path_remappings,
-			 abs_jwt_secret, abs_access_token_ttl_hours, abs_refresh_token_ttl_days, updated_at)
-		VALUES (1, $1, $2, $3, $4, $5, $6, NULLIF($7,''), $8, $9, $10, $11, $12, $13, now())
+			 abs_jwt_secret, abs_access_token_ttl_hours, abs_refresh_token_ttl_days,
+			 standalone_http_listen, updated_at)
+		VALUES (1, $1, $2, $3, $4, $5, $6, NULLIF($7,''), $8, $9, $10, $11, $12, $13, NULLIF($14,''), now())
 		ON CONFLICT (id) DO UPDATE SET
 			target_backend_plugin_id    = EXCLUDED.target_backend_plugin_id,
 			target_backend_installation_id = EXCLUDED.target_backend_installation_id,
@@ -161,6 +170,7 @@ func (s *Store) UpdateBackendConfig(ctx context.Context, cfg BackendConfig) erro
 			abs_jwt_secret              = COALESCE(EXCLUDED.abs_jwt_secret, backend_config.abs_jwt_secret),
 			abs_access_token_ttl_hours  = EXCLUDED.abs_access_token_ttl_hours,
 			abs_refresh_token_ttl_days  = EXCLUDED.abs_refresh_token_ttl_days,
+			standalone_http_listen      = EXCLUDED.standalone_http_listen,
 			updated_at                  = now()
 	`,
 		cfg.TargetBackendPluginID, cfg.TargetBackendInstallID,
@@ -168,9 +178,52 @@ func (s *Store) UpdateBackendConfig(ctx context.Context, cfg BackendConfig) erro
 		cfg.AutoApproveRequests, cfg.StreamingMode,
 		cfg.CacheDir, cfg.CacheMaxSizeGB, cfg.CacheDownloadConcurrency, remaps,
 		cfg.ABSJWTSecret, cfg.ABSAccessTTLHours, cfg.ABSRefreshTTLDays,
+		cfg.StandaloneHTTPListen,
 	)
 	if err != nil {
 		return fmt.Errorf("update backend_config: %w", err)
 	}
 	return nil
+}
+
+func (s *Store) ImportLegacyBackendConfig(ctx context.Context, legacy LegacyBackendConfig) (BackendConfig, error) {
+	current, err := s.GetBackendConfig(ctx)
+	if err != nil {
+		return BackendConfig{}, err
+	}
+	if !backendConfigIsDefault(current) {
+		return current, nil
+	}
+	next := current
+	next.StandaloneHTTPListen = legacy.StandaloneHTTPListen
+	if reflect.DeepEqual(backendConfigComparable(next), backendConfigComparable(current)) {
+		return current, nil
+	}
+	if err := s.UpdateBackendConfig(ctx, next); err != nil {
+		return BackendConfig{}, err
+	}
+	return s.GetBackendConfig(ctx)
+}
+
+func defaultBackendConfigShape() BackendConfig {
+	return BackendConfig{
+		StreamingMode:            "proxy",
+		CacheMaxSizeGB:           50,
+		CacheDownloadConcurrency: 2,
+		ABSAccessTTLHours:        24,
+		ABSRefreshTTLDays:        30,
+	}
+}
+
+func backendConfigIsDefault(c BackendConfig) bool {
+	return reflect.DeepEqual(backendConfigComparable(c), backendConfigComparable(defaultBackendConfigShape()))
+}
+
+func backendConfigComparable(c BackendConfig) BackendConfig {
+	c.ABSJWTSecret = nil
+	c.UpdatedAt = time.Time{}
+	if c.PathRemappings == nil {
+		c.PathRemappings = []PathRemap{}
+	}
+	return c
 }

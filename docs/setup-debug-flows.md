@@ -20,18 +20,14 @@ compatible API.
 1. Create the audiobooks schema and configure database_url.
 2. Install one or more audiobook backend plugins.
 3. In the Audiobooks admin UI, create presentation libraries mapped to backend installations/libraries.
-4. Optionally configure standalone_http_listen for reverse-proxied ABS/mobile client access.
-5. Optionally configure cdn_hostname and cdn_signing_secret if a backend serves signed track URLs.
-6. Submit a test browse, playback, and request flow.
+4. Optionally configure standalone_http_listen in the Audiobooks admin UI for direct ABS/mobile client access, for example `127.0.0.1:9999`.
+5. Submit a test browse, playback, and request flow.
 
 ## Configuration Reference
 
 - `database_url`
-- `standalone_http_listen`
-- `cdn_hostname`
-- `cdn_signing_secret`
 
-Use the plugin manifest/admin form as the source of truth for field validation and defaults. Keep database credentials scoped to the plugin schema unless a plugin explicitly needs read access to Continuum core tables.
+Use the host plugin config only for the database URL. Use the Audiobooks admin UI for portal behavior such as the standalone listen address. Keep database credentials scoped to the plugin schema unless a plugin explicitly needs read access to Continuum core tables.
 
 ## Exposed Routes
 

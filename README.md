@@ -24,8 +24,7 @@ request providers such as `continuum.audiobookbay-requests`.
 - Request routing to a configured request provider plugin.
 - Request status tracking for `submitted`, `acknowledged`, `queued`,
   `downloading`, `imported`, `failed`, `denied`, and `cancelled`.
-- Optional standalone HTTP listener for reverse-proxied client routes.
-- Optional CDN-style signed track URLs when paired with a compatible backend.
+- Optional standalone HTTP listener for direct ABS/mobile client routes.
 - Scheduled reconciliation for requests, idle sessions, and cached audio.
 
 ## Architecture
@@ -47,9 +46,9 @@ or swap providers underneath it.
 | Key | Required | Description |
 |---|---|---|
 | `database_url` | yes | Postgres DSN using the `audiobooks` schema. |
-| `standalone_http_listen` | no | Optional direct listener, for example `127.0.0.1:7878`, for reverse-proxied client routes. |
-| `cdn_hostname` | no | Hostname used for presigned CDN-style track URLs. |
-| `cdn_signing_secret` | no | 32-byte base64 HMAC secret shared with the streaming backend. |
+
+All portal settings other than the database DSN are managed in the Audiobooks
+admin UI and stored in this plugin's database.
 
 Example DSN:
 
@@ -77,8 +76,8 @@ After installing the portal:
    the backend plugin or backend sub-library.
 3. Optionally install a request provider, such as
    `continuum.audiobookbay-requests`, and select it in admin settings.
-4. If using direct client streaming, configure `standalone_http_listen` and
-   matching stream signing settings on the backend.
+4. If using direct ABS/mobile client access, set the standalone listener in
+   Audiobooks admin settings, for example `127.0.0.1:9999`.
 
 ## HTTP Surface
 

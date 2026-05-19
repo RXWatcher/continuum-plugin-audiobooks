@@ -109,6 +109,14 @@ func main() {
 			p.Close()
 			return fmt.Errorf("ensure backend_config: %w", err)
 		}
+		if imported, err := st.ImportLegacyBackendConfig(ctx, store.LegacyBackendConfig{
+			StandaloneHTTPListen: cfg.StandaloneHTTPListen,
+		}); err != nil {
+			p.Close()
+			return fmt.Errorf("import legacy backend_config: %w", err)
+		} else {
+			bcfg = imported
+		}
 
 		// Wire streaming layer.
 		var cache *streaming.Cache
@@ -134,7 +142,6 @@ func main() {
 			},
 			HostBaseFn: func() string { return hostBase },
 			InstallID:  func() string { return "continuum.audiobooks" },
-			CDNFn:      func() (string, string) { return cfg.CDNHostname, cfg.CDNSigningSecret },
 		})
 
 		srv := server.New(server.Deps{
@@ -148,11 +155,10 @@ func main() {
 		})
 		httpSrv.SetHandler(srv.Handler())
 
-		// Optional standalone HTTP listener for reverse-proxied client apps
-		// (e.g. abs.example.com → audiobookshelf mobile app). See the
-		// standalone_http_listen field in manifest.json. Bound once at first
-		// Configure; subsequent changes require a plugin restart.
-		if addr := cfg.StandaloneHTTPListen; addr != "" {
+		// Optional standalone HTTP listener for direct client apps. The value
+		// lives in backend_config and is managed by the admin SPA. Bound once
+		// at first Configure; subsequent changes require a plugin restart.
+		if addr := bcfg.StandaloneHTTPListen; addr != "" {
 			started := false
 			standaloneOnce.Do(func() {
 				started = true
