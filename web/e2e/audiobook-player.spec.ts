@@ -113,15 +113,30 @@ test('reader page exposes persistent player controls and smoke flows', async ({ 
   await page.getByRole('button', { name: /Finale/ }).click();
   await page.getByRole('button', { name: 'Bookmark' }).first().click();
   await page.getByRole('button', { name: 'Clip link' }).click();
+  await page.getByRole('button', { name: 'Save clip' }).click();
+  await expect(
+    page.locator('section').filter({ hasText: 'Clips' }).getByText(/Middle|Finale|Clip at/),
+  ).toBeVisible();
+
+  await page.locator('select').nth(3).selectOption('voice');
+  await expect(page.locator('select').nth(3)).toHaveValue('voice');
 
   await page.getByRole('button', { name: 'Download' }).click();
   await expect(page.getByRole('button', { name: /Downloaded|Use download/ })).toBeVisible();
+  await page.getByRole('button', { name: 'Delete download' }).click();
+  await expect(page.getByRole('button', { name: 'Download', exact: true })).toBeVisible();
 
   await page.getByText('Diagnostics').click();
   await expect(page.getByText('Session: web-session')).toBeVisible();
-  await expect(page.getByText('Source: Downloaded')).toBeVisible();
+  await expect(page.getByText('Source: Streaming')).toBeVisible();
   await expect(page.getByText('Listened:')).toBeVisible();
+  await expect(page.getByText('EQ: Voice')).toBeVisible();
 
+  await expect(page.getByText('Listening stats')).toBeVisible();
+  await expect(page.getByText('2:03', { exact: true })).toBeVisible();
+
+  await expect(page.getByText('This book is active on another device.')).toBeVisible();
+  await page.getByRole('button', { name: 'Take over playback' }).click();
   await expect(page.getByText('Active sessions')).toBeVisible();
   await page
     .locator('section')

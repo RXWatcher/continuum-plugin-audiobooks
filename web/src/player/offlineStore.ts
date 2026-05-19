@@ -36,6 +36,21 @@ export async function saveOfflineBlob(bookId: string, fileIndex: number, blob: B
   });
 }
 
+export async function deleteOfflineBlob(bookId: string, fileIndex: number): Promise<void> {
+  const db = await openDB();
+  await new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).delete(key(bookId, fileIndex));
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function offlineBlobSize(bookId: string, fileIndex: number): Promise<number> {
+  const blob = await getOfflineBlob(bookId, fileIndex);
+  return blob?.size ?? 0;
+}
+
 export async function downloadOfflineFile(
   bookId: string,
   fileIndex: number,

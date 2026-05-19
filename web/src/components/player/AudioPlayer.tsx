@@ -15,6 +15,7 @@ import {
   SkipBack,
   SkipForward,
   TimerOff,
+  Trash2,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { AudiobookChapter, AudiobookDetail } from '@/api/types';
@@ -23,6 +24,7 @@ import {
   SKIP_INTERVALS,
   SPEEDS,
   VOICE_BOOSTS,
+  EQ_PRESETS,
   usePlayback,
 } from '@/player/PlaybackProvider';
 
@@ -33,6 +35,12 @@ function fmt(t: number): string {
   const s = Math.floor(t % 60);
   if (h) return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   return `${m}:${String(s).padStart(2, '0')}`;
+}
+
+function fmtBytes(bytes: number): string {
+  if (!bytes) return '0 MB';
+  const mb = bytes / 1024 / 1024;
+  return `${mb >= 10 ? Math.round(mb) : mb.toFixed(1)} MB`;
 }
 
 export default function AudioPlayer({
@@ -209,6 +217,19 @@ export default function AudioPlayer({
           <label className="flex items-center gap-1">
             <Activity className="text-muted-foreground size-4" />
             <select
+              value={playback.eqPreset}
+              onChange={(event) => playback.setEqPreset(event.target.value as typeof playback.eqPreset)}
+              className="rounded border bg-background px-2 py-1"
+            >
+              {EQ_PRESETS.map((preset) => (
+                <option key={preset.id} value={preset.id}>
+                  {preset.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="flex items-center gap-1">
+            <select
               value={playback.voiceBoost}
               onChange={(event) => playback.setVoiceBoost(Number(event.target.value))}
               className="rounded border bg-background px-2 py-1"
@@ -239,13 +260,23 @@ export default function AudioPlayer({
           >
             <Download className="size-4" />
             {playback.downloading
-              ? 'Downloading'
+              ? `${Math.round(playback.downloadProgress * 100)}%`
               : playback.sourceMode === 'download'
                 ? 'Downloaded'
                 : playback.downloaded
                   ? 'Use download'
                   : 'Download'}
           </Button>
+          {playback.downloaded ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => void playback.deleteDownload()}
+            >
+              <Trash2 className="size-4" />
+              Delete download
+            </Button>
+          ) : null}
           <Button
             size="sm"
             variant="ghost"
@@ -263,6 +294,11 @@ export default function AudioPlayer({
             {Math.round(playback.progressPct * 100)}%
           </span>
         </div>
+        {playback.downloadError ? (
+          <div className="text-destructive mt-2 text-xs">
+            Download failed: {playback.downloadError}
+          </div>
+        ) : null}
         <details className="mt-3 rounded-md border border-border bg-background p-3 text-xs">
           <summary className="flex cursor-pointer items-center gap-2 font-medium">
             <Bug className="size-4" />
@@ -276,6 +312,8 @@ export default function AudioPlayer({
             <div>Track: {playback.activeFileOrdinal + 1}</div>
             <div>Last sync: {playback.lastSyncAt ? new Date(playback.lastSyncAt).toLocaleTimeString() : 'not yet'}</div>
             <div>Listened: {fmt(playback.listenedSeconds)}</div>
+            <div>Offline size: {fmtBytes(playback.offlineBytes)}</div>
+            <div>EQ: {EQ_PRESETS.find((preset) => preset.id === playback.eqPreset)?.label}</div>
             <div>Status: {playback.buffering ? 'buffering' : playback.playing ? 'playing' : 'paused'}</div>
           </div>
         </details>

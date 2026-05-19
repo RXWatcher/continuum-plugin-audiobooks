@@ -21,9 +21,11 @@ import { api } from '@/api/client';
 import type { AudiobookChapter, AudiobookDetail } from '@/api/types';
 import { Button } from '@/components/ui/button';
 import {
+  deleteOfflineBlob,
   downloadOfflineFile,
   getOfflineBlob,
   hasOfflineBlob,
+  offlineBlobSize,
 } from '@/player/offlineStore';
 import { streamPlaybackSource } from '@/player/sources';
 import {
@@ -41,6 +43,13 @@ export const SPEEDS = [0.8, 1.0, 1.25, 1.5, 1.75, 2.0];
 export const SKIP_INTERVALS = [15, 30, 45, 60];
 export const SLEEP_MINUTES = [0, 15, 30, 45, 60];
 export const VOICE_BOOSTS = [1, 1.25, 1.5, 2];
+export const EQ_PRESETS = [
+  { id: 'flat', label: 'Flat', low: 0, mid: 0, high: 0 },
+  { id: 'voice', label: 'Voice', low: -2, mid: 3, high: 2 },
+  { id: 'bright', label: 'Bright', low: -3, mid: 1, high: 4 },
+  { id: 'warm', label: 'Warm', low: 3, mid: 1, high: -1 },
+] as const;
+export type EqPresetID = (typeof EQ_PRESETS)[number]['id'];
 
 declare global {
   interface Window {
@@ -111,6 +120,12 @@ type PlaybackContextValue = {
   downloadBook: () => Promise<void>;
   downloading: boolean;
   downloaded: boolean;
+  downloadError: string;
+  downloadProgress: number;
+  offlineBytes: number;
+  deleteDownload: () => Promise<void>;
+  eqPreset: EqPresetID;
+  setEqPreset: (preset: EqPresetID) => void;
 };
 
 const PlaybackContext = createContext<PlaybackContextValue | null>(null);
@@ -135,6 +150,9 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const audioContextRef = useRef<AudioContext | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const gainRef = useRef<GainNode | null>(null);
+  const lowFilterRef = useRef<BiquadFilterNode | null>(null);
+  const midFilterRef = useRef<BiquadFilterNode | null>(null);
+  const highFilterRef = useRef<BiquadFilterNode | null>(null);
 
   const [audiobook, setAudiobook] = useState<AudiobookDetail>();
   const [bookTime, setBookTime] = useState(0);
@@ -158,6 +176,12 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const [sourceUrl, setSourceUrl] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [offlineBytes, setOfflineBytes] = useState(0);
+  const [eqPreset, setEqPresetState] = useState<EqPresetID>(
+    () => (window.localStorage.getItem('audiobooks.eqPreset') as EqPresetID | null) ?? 'flat',
+  );
 
   const timeline = useMemo(() => buildFileTimeline(audiobook?.files ?? []), [audiobook]);
   const duration = audiobook?.duration_seconds || timelineDuration(timeline);
@@ -270,12 +294,20 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         window.localStorage.getItem(bookPrefKey(nextBook.id, 'silenceTrim')) === 'true' ||
           window.localStorage.getItem('audiobooks.silenceTrim') === 'true',
       );
+      setEqPresetState(
+        ((window.localStorage.getItem(bookPrefKey(nextBook.id, 'eqPreset')) ||
+          window.localStorage.getItem('audiobooks.eqPreset') ||
+          'flat') as EqPresetID),
+      );
       api
         .getListeningStats(nextBook.id)
         .then((stats) => setListenedSeconds(stats.listened_seconds ?? 0))
         .catch(() => {});
       void Promise.all(nextBook.files.map((file) => hasOfflineBlob(nextBook.id, file.index))).then(
         (results) => setDownloaded(results.length > 0 && results.every(Boolean)),
+      );
+      void Promise.all(nextBook.files.map((file) => offlineBlobSize(nextBook.id, file.index))).then(
+        (sizes) => setOfflineBytes(sizes.reduce((sum, size) => sum + size, 0)),
       );
       api
         .createPlaybackSession(nextBook.id, {
@@ -349,6 +381,25 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     [speed],
   );
 
+  const applyEqPreset = useCallback((presetID: EqPresetID) => {
+    const preset = EQ_PRESETS.find((item) => item.id === presetID) ?? EQ_PRESETS[0];
+    if (lowFilterRef.current) lowFilterRef.current.gain.value = preset.low;
+    if (midFilterRef.current) midFilterRef.current.gain.value = preset.mid;
+    if (highFilterRef.current) highFilterRef.current.gain.value = preset.high;
+  }, []);
+
+  const setEqPreset = useCallback(
+    (presetID: EqPresetID) => {
+      setEqPresetState(presetID);
+      window.localStorage.setItem('audiobooks.eqPreset', presetID);
+      if (currentBookRef.current) {
+        window.localStorage.setItem(bookPrefKey(currentBookRef.current.id, 'eqPreset'), presetID);
+      }
+      applyEqPreset(presetID);
+    },
+    [applyEqPreset],
+  );
+
   useEffect(() => {
     if (audioRef.current && !silenceTrim) audioRef.current.playbackRate = speed;
     if (gainRef.current) gainRef.current.gain.value = voiceBoost;
@@ -407,19 +458,36 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       const context = new AudioContextCtor();
       const source = context.createMediaElementSource(audio);
       const analyser = context.createAnalyser();
+      const low = context.createBiquadFilter();
+      const mid = context.createBiquadFilter();
+      const high = context.createBiquadFilter();
       const gain = context.createGain();
+      low.type = 'lowshelf';
+      low.frequency.value = 180;
+      mid.type = 'peaking';
+      mid.frequency.value = 1200;
+      mid.Q.value = 0.9;
+      high.type = 'highshelf';
+      high.frequency.value = 3200;
       analyser.fftSize = 256;
       gain.gain.value = voiceBoost;
-      source.connect(analyser);
+      source.connect(low);
+      low.connect(mid);
+      mid.connect(high);
+      high.connect(analyser);
       analyser.connect(gain);
       gain.connect(context.destination);
       audioContextRef.current = context;
+      lowFilterRef.current = low;
+      midFilterRef.current = mid;
+      highFilterRef.current = high;
       analyserRef.current = analyser;
       gainRef.current = gain;
+      applyEqPreset(eqPreset);
     } catch {
       // Some browsers reject media element graphs for protected streams.
     }
-  }, [voiceBoost]);
+  }, [applyEqPreset, eqPreset, voiceBoost]);
 
   useEffect(() => {
     if (!playing || !silenceTrim || !analyserRef.current || !audioRef.current) return;
@@ -481,19 +549,40 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const downloadBook = useCallback(async () => {
     if (!audiobook) return;
     setDownloading(true);
+    setDownloadError('');
+    setDownloadProgress(0);
     try {
+      let completed = 0;
       for (const file of audiobook.files) {
         await downloadOfflineFile(
           audiobook.id,
           file.index,
           streamPlaybackSource.urlForFile(audiobook.id, file.index),
         );
+        completed += 1;
+        setDownloadProgress(completed / audiobook.files.length);
       }
       setDownloaded(true);
       setSourceMode('download');
+      const sizes = await Promise.all(audiobook.files.map((file) => offlineBlobSize(audiobook.id, file.index)));
+      setOfflineBytes(sizes.reduce((sum, size) => sum + size, 0));
+    } catch (error) {
+      setDownloadError(error instanceof Error ? error.message : 'Download failed');
+      throw error;
     } finally {
       setDownloading(false);
     }
+  }, [audiobook]);
+
+  const deleteDownload = useCallback(async () => {
+    if (!audiobook) return;
+    for (const file of audiobook.files) {
+      await deleteOfflineBlob(audiobook.id, file.index);
+    }
+    setDownloaded(false);
+    setOfflineBytes(0);
+    setDownloadProgress(0);
+    setSourceMode('stream');
   }, [audiobook]);
 
   useEffect(() => {
@@ -581,6 +670,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       setSilenceTrim,
       setSourceMode,
       setVoiceBoost,
+      setEqPreset,
 	      skipSeconds,
 	      silenceTrim,
 	      sleepAtChapterEnd,
@@ -595,6 +685,11 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       downloadBook,
       downloading,
       downloaded,
+      downloadError,
+      downloadProgress,
+      offlineBytes,
+      deleteDownload,
+      eqPreset,
 	    }),
     [
       activeChapter,
@@ -617,6 +712,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       setSilenceTrim,
       sourceMode,
       setVoiceBoost,
+      setEqPreset,
 	      skipSeconds,
 	      silenceTrim,
 	      sleepAtChapterEnd,
@@ -629,6 +725,11 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       downloadBook,
       downloading,
       downloaded,
+      downloadError,
+      downloadProgress,
+      offlineBytes,
+      deleteDownload,
+      eqPreset,
 	    ],
 	  );
 
