@@ -7,7 +7,7 @@ to audiobook backend plugins.
 
 Install this plugin when you want a single audiobook experience in Continuum
 that can sit in front of local libraries, external BookWarehouse instances, or
-request providers such as `continuum.audiobookbay-requests`.
+request providers such as `continuum.audiobook-requests`.
 
 ## Detailed Operations Docs
 
@@ -35,7 +35,7 @@ The portal is intentionally separate from source providers:
   requests table, playback sessions, and library presentation.
 - Catalog and stream providers such as `continuum.local-audiobooks` or
   `continuum.bookwarehouse-audio` own the actual library data.
-- Request providers such as `continuum.audiobookbay-requests` can be selected
+- Request providers such as `continuum.audiobook-requests` can be selected
   separately from the catalog provider.
 
 This keeps the customer-facing portal stable while operators can add, remove,
@@ -75,7 +75,7 @@ After installing the portal:
 2. In the Audiobooks admin UI, create a presentation library and point it at
    the backend plugin or backend sub-library.
 3. Optionally install a request provider, such as
-   `continuum.audiobookbay-requests`, and select it in admin settings.
+   `continuum.audiobook-requests`, and select it in admin settings.
 4. If using direct ABS/mobile client access, set the standalone listener in
    Audiobooks admin settings, for example `127.0.0.1:9999`.
 

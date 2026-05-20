@@ -13,7 +13,7 @@ compatible API.
 - Continuum plugin host
 - Postgres schema for this plugin
 - At least one audiobook backend such as local-audiobooks or bookwarehouse-audio
-- Optional request provider such as audiobookbay-requests
+- Optional request provider such as audiobook-requests
 
 ## Setup Checklist
 

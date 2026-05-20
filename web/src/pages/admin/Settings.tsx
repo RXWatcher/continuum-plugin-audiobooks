@@ -105,7 +105,7 @@ export default function AdminSettings() {
               value={form.target_request_provider_plugin_id || form.target_backend_plugin_id}
               providers={requestProviders.length ? requestProviders : providers.data ?? []}
               onChange={(value) => update('target_request_provider_plugin_id', value)}
-              placeholder="continuum.audiobookbay-requests"
+              placeholder="continuum.audiobook-requests"
             />
           </Field>
           <Field label="Auto-approve requests">
