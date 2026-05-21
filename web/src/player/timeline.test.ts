@@ -56,4 +56,29 @@ describe('audiobook whole-book timeline', () => {
     expect(chapterAt(chapters, 224)?.title).toBe('Ending');
     expect(chapterAt(chapters, 225)?.title).toBe('Ending');
   });
+
+  test('returns the first chapter when bookTime precedes chapters[0]', () => {
+    // Some books open with intro music or other content that sits before
+    // the first chapter marker. The previous fallback returned
+    // chapters[chapters.length-1], which made the next-chapter button
+    // disable itself at the start of every such book.
+    const chapters = [
+      { title: 'Opening', start_seconds: 30, end_seconds: 90 },
+      { title: 'Middle', start_seconds: 90, end_seconds: 180 },
+    ];
+    expect(chapterAt(chapters, 0)?.title).toBe('Opening');
+    expect(chapterAt(chapters, 29.9)?.title).toBe('Opening');
+  });
+
+  test('returns the most-recent chapter when bookTime sits in a gap', () => {
+    // Two chapters with a gap between them — a timeline glitch but real
+    // ABS feeds occasionally have this. chapterAt should report the most
+    // recently entered chapter rather than the last one in the array.
+    const chapters = [
+      { title: 'One', start_seconds: 0, end_seconds: 30 },
+      { title: 'Two', start_seconds: 60, end_seconds: 120 },
+    ];
+    expect(chapterAt(chapters, 45)?.title).toBe('One');
+    expect(chapterAt(chapters, 200)?.title).toBe('Two');
+  });
 });

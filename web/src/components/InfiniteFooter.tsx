@@ -19,6 +19,17 @@ export default function InfiniteFooter({
   label,
 }: Props) {
   const sentinelRef = useRef<HTMLDivElement>(null);
+  // Stash the latest fetchNextPage + isFetchingNextPage in refs so the
+  // IntersectionObserver effect doesn't tear itself down on every render
+  // when the parent passes fresh function identities (TanStack Query's
+  // fetchNextPage isn't referentially stable). Without this, the IO was
+  // rebuilt + observed on every keystroke that re-renders the parent.
+  const fetchRef = useRef(fetchNextPage);
+  const fetchingRef = useRef(isFetchingNextPage);
+  useEffect(() => {
+    fetchRef.current = fetchNextPage;
+    fetchingRef.current = isFetchingNextPage;
+  }, [fetchNextPage, isFetchingNextPage]);
 
   useEffect(() => {
     if (!hasNextPage) return;
@@ -26,15 +37,15 @@ export default function InfiniteFooter({
     if (!node) return;
     const observer = new IntersectionObserver(
       (entries) => {
-        if (entries.some((e) => e.isIntersecting) && !isFetchingNextPage) {
-          fetchNextPage();
+        if (entries.some((e) => e.isIntersecting) && !fetchingRef.current) {
+          fetchRef.current();
         }
       },
       { rootMargin: '600px' },
     );
     observer.observe(node);
     return () => observer.disconnect();
-  }, [hasNextPage, isFetchingNextPage, fetchNextPage]);
+  }, [hasNextPage]);
 
   if (!hasNextPage) return null;
   return (

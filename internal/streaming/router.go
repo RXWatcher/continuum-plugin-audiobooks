@@ -12,6 +12,7 @@
 package streaming
 
 import (
+	"context"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -22,10 +23,12 @@ import (
 	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/mediatoken"
 )
 
-// SecretProvider returns the current media signing secret. Implementations
-// typically read from the store on each call so admin updates take effect
-// without a plugin restart.
-type SecretProvider func() string
+// SecretProvider returns the current media signing secret. The ctx threads
+// through from the inbound HTTP request so a slow DB lookup of the secret
+// is cancellable by the client disconnecting — without it, a stalled
+// Postgres during playback would pile up forever-blocked goroutines
+// holding response writers open.
+type SecretProvider func(ctx context.Context) string
 
 // Router builds the backend stream URL with a signed media token and writes
 // the redirect.
@@ -60,7 +63,7 @@ func (r *Router) Stream(w http.ResponseWriter, req *http.Request, userID, instal
 		http.Error(w, "media signing not configured", http.StatusServiceUnavailable)
 		return
 	}
-	secret := r.secret()
+	secret := r.secret(req.Context())
 	if secret == "" {
 		slog.Warn("media_signing_secret is empty; refusing to issue a tokenless redirect")
 		http.Error(w, "media signing not configured", http.StatusServiceUnavailable)

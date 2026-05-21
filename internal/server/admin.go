@@ -3,6 +3,7 @@ package server
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -121,7 +122,18 @@ func (s *Server) handleUpdateBackendConfig(w http.ResponseWriter, r *http.Reques
 		cur.StandaloneLoginMode = mode
 	}
 	if p.MediaSigningSecret != nil {
-		cur.MediaSigningSecret = *p.MediaSigningSecret
+		// Reject obviously-weak secrets at the admin boundary. An empty
+		// string clears the secret (we let that through — operators may
+		// want to disable media signing during incident response). Any
+		// non-empty value must be at least 16 bytes (128 bits of entropy
+		// in raw form, or ~12 bytes after base64-decode) so we don't
+		// silently accept a 1-character HMAC key.
+		v := *p.MediaSigningSecret
+		if v != "" && len(v) < 16 {
+			writeError(w, http.StatusBadRequest, "media_signing_secret must be at least 16 characters")
+			return
+		}
+		cur.MediaSigningSecret = v
 	}
 	if p.RotateABSSecret {
 		secret, err := randomBytes(32)
@@ -203,7 +215,13 @@ func (s *Server) handleAdminSyncLibraries(w http.ResponseWriter, r *http.Request
 	}
 	stats, err := libsync.Sync(r.Context(), s.d.Store, s.d.Backend, id.Token, backendID)
 	if err != nil {
-		writeError(w, http.StatusBadGateway, err.Error())
+		// Don't surface the upstream backend error text to the admin SPA;
+		// it carries the host-proxy URL and the truncated upstream body
+		// which can leak schema names and internal paths. Log server-side
+		// and return an opaque message.
+		slog.Warn("audiobooks admin: library sync failed",
+			"backend_plugin_id", backendID, "err", err)
+		writeError(w, http.StatusBadGateway, "library sync failed")
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{

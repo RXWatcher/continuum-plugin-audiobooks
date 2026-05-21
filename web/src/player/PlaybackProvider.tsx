@@ -551,8 +551,17 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
         // Safari). Swallow — the action just won't be wired.
       }
     };
-    setHandler('play', () => toggle());
-    setHandler('pause', () => toggle());
+    // Explicit play / pause rather than toggle() to avoid an OS "pause"
+    // event flipping us back into playback if our internal `playing` state
+    // hasn't caught up with the audio element yet. The audio ref handles
+    // the actual transport — playing-while-already-playing and pausing-
+    // while-already-paused are both no-ops on the underlying element.
+    setHandler('play', () => {
+      void audioRef.current?.play();
+    });
+    setHandler('pause', () => {
+      audioRef.current?.pause();
+    });
     setHandler('seekbackward', (details) => {
       const offset = details.seekOffset ?? skipSeconds;
       seek(bookTimeRef.current - offset);

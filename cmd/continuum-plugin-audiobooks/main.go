@@ -172,9 +172,11 @@ func main() {
 		// Wire streaming layer — a thin 302 to the backend's stream URL with
 		// a freshly-minted signed media token. The SecretProvider reads from
 		// the store on each call so admin updates to media_signing_secret
-		// take effect without a plugin restart.
-		streamSecret := func() string {
-			cfg, err := st.GetBackendConfig(ctx)
+		// take effect without a plugin restart. The Router threads the
+		// inbound request's context through so a stalled DB lookup is
+		// cancellable when the client disconnects.
+		streamSecret := func(reqCtx context.Context) string {
+			cfg, err := st.GetBackendConfig(reqCtx)
 			if err != nil {
 				return ""
 			}

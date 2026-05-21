@@ -65,14 +65,37 @@ export function fileTimeToBookTime(
   return entry.start + Math.max(0, Math.min(fileTime, entry.duration));
 }
 
+// chapterAt picks the chapter containing bookTime. Three buckets, in
+// priority order:
+//   1. Exact match — bookTime falls inside [start, end).
+//   2. Pre-first — bookTime sits before chapters[0].start (intro music,
+//      or chapters that don't start at zero). Return chapters[0], not
+//      chapters[last] — the previous fallback was a footgun: returning the
+//      last chapter as "current" made the next-chapter button silently
+//      disable itself at the start of every book whose chapters[0] doesn't
+//      start at second zero.
+//   3. Gap or trailing — bookTime sits between two chapters (gap in the
+//      timeline) or after the last chapter's end. Return the most-recent
+//      chapter whose start_seconds <= bookTime, falling back to the last
+//      chapter when bookTime is past everything.
 export function chapterAt(
   chapters: AudiobookChapter[] | undefined,
   bookTime: number,
 ): AudiobookChapter | undefined {
   if (!chapters?.length) return undefined;
-  return (
-    chapters.find(
-      (chapter) => bookTime >= chapter.start_seconds && bookTime < chapter.end_seconds,
-    ) ?? chapters[chapters.length - 1]
-  );
+  // Exact match.
+  for (const c of chapters) {
+    if (bookTime >= c.start_seconds && bookTime < c.end_seconds) return c;
+  }
+  // Pre-first.
+  if (bookTime < chapters[0].start_seconds) return chapters[0];
+  // Gap or trailing — walk forward until we pass bookTime, then take the
+  // previous chapter as the "current". Assumes chapters are in
+  // chronological order, which matches ABS contract.
+  let last = chapters[0];
+  for (const c of chapters) {
+    if (c.start_seconds > bookTime) return last;
+    last = c;
+  }
+  return last;
 }
