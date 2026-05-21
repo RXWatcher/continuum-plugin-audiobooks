@@ -1,0 +1,2 @@
+DROP TABLE IF EXISTS playlist_item;
+DROP TABLE IF EXISTS playlist;

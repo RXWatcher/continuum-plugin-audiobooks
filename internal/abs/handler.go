@@ -272,6 +272,7 @@ func (h *Handler) Mount(r chi.Router) {
 			r.Post(prefix+"/session/{sid}/close", h.handleSessionClose)
 			h.mountSmartCollectionRoutes(prefix, r)
 			h.mountCollectionsRoutes(prefix, r)
+			h.mountPlaylistsRoutes(prefix, r)
 		}
 	})
 
