@@ -14,12 +14,15 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CommandPaletteProvider, useCommandPalette } from '@/components/CommandPalette';
+import { ShortcutHelpProvider } from '@/components/ShortcutHelp';
 
 export default function Layout() {
   return (
-    <CommandPaletteProvider>
-      <LayoutInner />
-    </CommandPaletteProvider>
+    <ShortcutHelpProvider>
+      <CommandPaletteProvider>
+        <LayoutInner />
+      </CommandPaletteProvider>
+    </ShortcutHelpProvider>
   );
 }
 
