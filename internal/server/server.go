@@ -70,6 +70,7 @@ func (s *Server) Handler() http.Handler {
 		s.mountAdminRoutes(r)
 		s.mountContentRestrictionRoutes(r)
 		s.mountCustomMetadataProviderRoutes(r)
+		s.mountReadingSessionRoutes(r)
 		s.mountStreamRoutes(r)
 	})
 
