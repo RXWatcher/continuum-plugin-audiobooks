@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/oklog/ulid/v2"
@@ -17,6 +18,7 @@ import (
 // mountUserStateRoutes wires progress, bookmark, and rating endpoints.
 func (s *Server) mountUserStateRoutes(r chi.Router) {
 	r.Get("/me/progress", s.handleListMyProgress)
+	r.Get("/me/streak", s.handleGetStreak)
 	r.Get("/me/listening-stats/{id}", s.handleGetListeningStats)
 	r.Get("/me/playback-sessions", s.handleListMyPlaybackSessions)
 	r.Patch("/audiobooks/{id}/progress", s.handleUpsertProgress)
@@ -296,6 +298,23 @@ func (s *Server) handleListBookmarks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"items": out})
+}
+
+// handleGetStreak — GET /api/v1/me/streak
+// Returns {current, longest, last_active_date} computed from
+// progress.updated_at distinct dates. Timezone is UTC by default; a
+// future per-user TZ setting would override.
+func (s *Server) handleGetStreak(w http.ResponseWriter, r *http.Request) {
+	id, ok := auth.RequireUser(w, r)
+	if !ok {
+		return
+	}
+	streak, err := s.d.Store.StreakForUser(r.Context(), id.UserID, time.UTC)
+	if err != nil {
+		writeInternal(w, r, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, streak)
 }
 
 type bookmarkPayload struct {
