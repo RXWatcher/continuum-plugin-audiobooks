@@ -473,6 +473,106 @@ Items pushed down (still worth doing, just not in top 10):
   - Items-in-progress + remove-from-CL + DELETE progress ship as
     one /me/* compatibility commit.
 
+## Session progress — 2026-05-21
+
+### Shipped this session
+
+ABS Top-10 compatibility (audiobooks):
+- Dual-mount routes (server root + /api + legacy /abs/api)
+- Rich login envelope + x-refresh-token header + /api/authorize
+- Sort param convention (audit — already correct)
+- Socket init / auth_failed / {data} wrapper on user_item_progress_updated
+- Library detail wrapper + personalized shelf shapes + podcast home tab
+- Bookmarks CRUD on /me/item/{id}/bookmark
+- Download endpoint /api/items/{id}/file/{ino} with Range + per-ext mime
+- /me/items-in-progress + Continue-Listening management
+- Library multi-bucket search
+- Sleep-timer 30-second fade + ServerVersion 2.26
+
+ABS Top-10 follow-ups:
+- Plural Socket.io events (items_added, library_updated,
+  episode_download_finished)
+- Bookmark UI in SPA (auto-titles + inline rename, PATCH backend)
+- Command palette (Cmd-K) in both audiobooks + ebooks
+
+Rule-based Smart Collections + Embedding Recommendations:
+- DSL + evaluator mirroring host's QueryDefinition shape, in
+  audiobooks AND ebooks plugins
+- pgvector schema + HNSW index + recommendation cache, both plugins
+- OpenAI / Gemini / Ollama embedding client + audiobook + ebook
+  text builders
+- /api/items/{id}/similar (audiobooks) + /me/books/{id}/similar
+  (ebooks) endpoints, cache-backed
+- Smart Collection CRUD + evaluated /items endpoint, both plugins
+- Migration 0018 in ebooks is pgvector-tolerant for dev/test envs
+
+Other:
+- Reading streak counter — /me/streak in both plugins
+- Keyboard shortcut help overlay (?) in both plugins
+
+### Not yet shipped — comprehensive remaining backlog
+
+#### Quick (1 session each)
+
+- **Atmosphere mode** — ambient background + audio loop themed per
+  book. Both plugins.
+- **Footnote popovers** (ebooks) — readest FootnotePopup pattern.
+- **Reading ruler** (ebooks) — readest ReadingRuler.tsx.
+- **Image-zoom viewer + table-viewer popovers** (ebooks).
+- **Magnifier loupe on touch selection** (ebooks mobile).
+- **E-ink mode + screen wake-lock + Discord rich presence** (ebooks).
+- **Markdown annotation export** (ebooks).
+- **Shareable quote-image generator** (ebooks).
+- **Smart cover fallback chain** — embedded ID3 cover hop on the
+  audiobooks side (requires ID3 parsing).
+
+#### Medium (1–2 days each)
+
+- **TTS controller + MediaSession** (both) — multi-engine, sentence-
+  level highlight, OS lock-screen controls.
+- **Reading-session telemetry + streak/heatmap dashboard** —
+  streak counter shipped; heatmap + charts on a dedicated stats
+  page is a follow-up.
+- **Highlight system + Markdown / Readwise export** (ebooks).
+- **Content restrictions / family / child mode** (both) —
+  CATEGORY/TAG/AGE_RATING with ALLOW/DENY, admin-managed.
+- **Dictionary + in-text translation popover** (ebooks).
+- **Hardcover.app sync** (both) — BYO API key.
+- **Sidecar JSON files** (both) — metadata adjacent to book file.
+- **Custom font upload + sync** (ebooks).
+- **Annotation aggregation Notebook view** (ebooks).
+- **KOSync conflict-resolver UI** (ebooks).
+- **Metadata enrichment on import** — OpenLibrary + Google Books.
+- **Custom metadata providers** (ABS compat).
+
+#### Heavy (architectural; each likely its own session)
+
+- **`foliate-js` renderer swap** (ebooks) — unlocks CFI, FXL,
+  MOBI/KF8/CBZ/PDF, paginated + scrolled, overlay API. Foundation
+  for half the readest items above.
+- **HLC + field-level LWW CRDT replica sync** — replaces ad-hoc
+  kosync with conflict-free annotations + progress + bookmarks +
+  settings across web + mobile.
+- **BookDrop watched folder** — auto-metadata-enrich, admin
+  review queue, bulk-edit, filename-pattern extraction.
+- **Collections + Playlists CRUD** (ABS compat) — full domain
+  models with matching socket events.
+- **Send-to-ereader + RSS-feed-publish** (ABS compat) — SMTP +
+  device-registration + feed generation.
+- **AI sidebar with per-book RAG** (ebooks) — chunk → embed →
+  retrieve → chat.
+- **Document-to-EPUB conversion on import** — DOCX / RTF / HTML /
+  Readability article.
+
+### Notes for the next session
+
+- pgvector is required in production for both plugins. Audiobooks
+  uses testcontainers + pgvector/pgvector:pg17. Ebooks uses
+  TEST_DATABASE_URL env var; migration 0018 is pgvector-tolerant
+  for dev/test envs without it.
+- All session work is on origin/main: audiobooks `e5d1cb7`,
+  ebooks `2b5625b`.
+
 ## Source references
 
 - /opt/grimmory README.md, `audiobook-player.component.ts`,
