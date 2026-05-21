@@ -34,6 +34,8 @@ func (s *Server) mountShareLinkRoutes(r chi.Router) {
 // route. Mount this OUTSIDE the user-auth group.
 func (s *Server) MountPublicShare(r chi.Router) {
 	r.Get("/share/{slug}", s.handleResolveShareLink)
+	r.Get("/share/{slug}/play", s.handleSharePlay)
+	r.Get("/share/{slug}/track/{idx}", s.handleShareTrack)
 }
 
 type shareLinkBody struct {
