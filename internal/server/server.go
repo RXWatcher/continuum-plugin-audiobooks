@@ -73,6 +73,7 @@ func (s *Server) Handler() http.Handler {
 		s.mountReadingSessionRoutes(r)
 		s.mountBookDropRoutes(r)
 		s.mountEnrichRoutes(r)
+		s.mountReadingGoalRoutes(r)
 		s.mountStreamRoutes(r)
 	})
 
