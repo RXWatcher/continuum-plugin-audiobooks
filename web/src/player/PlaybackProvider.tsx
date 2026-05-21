@@ -422,14 +422,32 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
     return () => window.clearInterval(id);
   }, [playing, sync]);
 
+  // Sleep timer with 30-second fade — borrowed from grimmory's
+  // audiobook-player.component.ts:929-1042. The audio doesn't just
+  // cut off at sleepUntil; instead the last 30 seconds ramp the
+  // gain from 1.0 → 0 so the listener gradually drifts off without
+  // a jarring stop. Restoring the volume happens on the next play
+  // (audio.volume defaults back to 1 on the source change in
+  // setSourceMode and on toggle; we explicitly reset here too).
   useEffect(() => {
     if (sleepUntil == null) return;
+    const fadeStartMs = sleepUntil - 30_000;
     const id = window.setInterval(() => {
-      if (Date.now() >= sleepUntil) {
-        audioRef.current?.pause();
+      const now = Date.now();
+      const el = audioRef.current;
+      if (!el) return;
+      if (now >= sleepUntil) {
+        el.pause();
+        el.volume = 1; // restore for next play
         setSleepUntil(null);
+        return;
       }
-    }, 1_000);
+      if (now >= fadeStartMs) {
+        // Linear fade from 1.0 at fadeStartMs to 0.0 at sleepUntil.
+        const remaining = sleepUntil - now;
+        el.volume = Math.max(0, Math.min(1, remaining / 30_000));
+      }
+    }, 200);
     return () => window.clearInterval(id);
   }, [sleepUntil]);
 

@@ -237,6 +237,12 @@ func (h *Handler) Mount(r chi.Router) {
 			r.Get(prefix+"/items/{id}/cover", h.handleItemCover)
 			r.Post(prefix+"/items/{id}/play", h.handlePlay)
 			r.Post(prefix+"/items/{id}/play/{episodeId}", h.handlePlayEpisode)
+			// File download / streaming — the mobile + web clients use
+			// these for offline saves and iOS audio streaming. ?token=
+			// in the URL is the access JWT (not a media token); the
+			// bearerAuth middleware accepts it via the query fallback.
+			r.Get(prefix+"/items/{id}/file/{ino}", h.handleItemFile)
+			r.Get(prefix+"/items/{id}/file/{ino}/download", h.handleItemFile)
 			r.Get(prefix+"/me/progress/{itemId}", h.handleGetProgress)
 			r.Patch(prefix+"/me/progress/{itemId}", h.handlePatchProgress)
 			r.Delete(prefix+"/me/progress/{itemId}", h.handleDeleteProgress)

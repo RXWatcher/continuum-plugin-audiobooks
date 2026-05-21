@@ -14,7 +14,11 @@ const (
 	VirtualLibraryName = "Audiobooks"
 	VirtualFolderID    = "main"
 	LibraryMediaType   = "book"
-	ServerVersion      = "2.25.1"
+	// ServerVersion must be ≥ 2.26.0 for the official ABS mobile app
+	// to take its JWT path; below that it falls into "old token" mode
+	// and rejects modern refresh-token semantics. See
+	// /opt/audiobookshelf-app/components/connect/ServerConnectForm.vue:731.
+	ServerVersion = "2.26.0"
 	ServerSourceTag    = "continuum"
 )
 
