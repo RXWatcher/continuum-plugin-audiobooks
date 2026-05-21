@@ -188,14 +188,14 @@ func (h *Handler) handlePublicFeed(w http.ResponseWriter, r *http.Request) {
 		},
 	}
 
-	if feed.EntityType == "item" {
-		episodes := h.itemFeedEpisodes(r, feed.EntityID, base, r.Host)
-		channel.Items = episodes
+	switch feed.EntityType {
+	case "item":
+		channel.Items = h.itemFeedEpisodes(r, feed.EntityID, base, r.Host)
+	case "collection":
+		channel.Items = h.collectionFeedEpisodes(r, feed.UserID, feed.EntityID, base, r.Host, feed.Slug)
+	case "series":
+		channel.Items = h.seriesFeedEpisodes(r, feed.EntityID, base, r.Host, feed.Slug)
 	}
-	// series + collection feeds emit just the channel header for
-	// now — a podcast client subscribing sees the title + cover but
-	// no episodes until a follow-up commits the per-book episode
-	// rendering.
 
 	doc := rssDocument{
 		XMLNSITunes: "http://www.itunes.com/dtds/podcast-1.0.dtd",
@@ -259,6 +259,121 @@ func (h *Handler) itemFeedEpisodes(r *http.Request, encoded, scheme, host string
 		})
 	}
 	return out
+}
+
+// collectionFeedEpisodes renders one episode per book in the
+// owner's manual collection. Each book becomes one episode using
+// its FIRST track as the enclosure — a podcast app subscribing to
+// a collection feed gets a queue of audiobook samples, which is
+// the standard "follow my reading list" UX.
+func (h *Handler) collectionFeedEpisodes(r *http.Request, ownerID, collectionID, scheme, host, slug string) []rssItem {
+	items, err := h.store.ListCollectionItems(r.Context(), collectionID, ownerID)
+	if err != nil {
+		return nil
+	}
+	out := make([]rssItem, 0, len(items))
+	for _, it := range items {
+		ep := h.singleBookEpisode(r, it.BookID, scheme, host, slug)
+		if ep != nil {
+			out = append(out, *ep)
+		}
+	}
+	return out
+}
+
+// seriesFeedEpisodes renders one episode per book in the series.
+// The backend's BrowseSeries endpoint surfaces books-in-series;
+// we walk it + emit each as a single-track episode. Books that
+// 404 are silently skipped.
+func (h *Handler) seriesFeedEpisodes(r *http.Request, seriesID, scheme, host, slug string) []rssItem {
+	// Series feeds are typically owner-scoped to one library; we
+	// scan the owner's libraries to find one whose backend knows
+	// this series. Best-effort — most deployments have a single
+	// audiobook library.
+	libs := h.portalLibraries(r.Context(), true)
+	for _, lib := range libs {
+		if lib.BackendPluginID == "" {
+			continue
+		}
+		out, err := h.backend.ListCatalog(r.Context(), "", lib.BackendPluginID, backend.ListParams{
+			Limit:     200,
+			LibraryID: backendLibraryID(lib),
+		})
+		if err != nil {
+			continue
+		}
+		// Filter for books in this series. The summary's SeriesRefs
+		// is the v1.1 shape; flat Series is the legacy shape.
+		matches := make([]string, 0, 8)
+		for _, s := range out.Items {
+			if seriesMatches(s, seriesID) {
+				matches = append(matches, bookref.Encode(lib.ID, s.ID))
+			}
+		}
+		if len(matches) == 0 {
+			continue
+		}
+		feedItems := make([]rssItem, 0, len(matches))
+		for _, encoded := range matches {
+			ep := h.singleBookEpisode(r, encoded, scheme, host, slug)
+			if ep != nil {
+				feedItems = append(feedItems, *ep)
+			}
+		}
+		return feedItems
+	}
+	return nil
+}
+
+// seriesMatches returns true when the summary lists this series.
+// The v1.1 backend contract exposes only SeriesRefs on the
+// summary; legacy callers carrying a flat series string need to
+// pass it as the series id and we'll match on ref.Name.
+func seriesMatches(s backend.AudiobookSummary, seriesID string) bool {
+	for _, ref := range s.SeriesRefs {
+		if ref.ID == seriesID || ref.Name == seriesID {
+			return true
+		}
+	}
+	return false
+}
+
+// singleBookEpisode emits one rssItem for an entire audiobook.
+// First track of the book is the enclosure; title + author come
+// from the backend GetDetail. Returns nil when the book can't be
+// resolved.
+func (h *Handler) singleBookEpisode(r *http.Request, encoded, scheme, host, slug string) *rssItem {
+	libID, backendBookID, ok := bookref.Decode(encoded)
+	if !ok || libID == 0 {
+		return nil
+	}
+	lib, err := h.store.GetPortalLibrary(r.Context(), libID)
+	if err != nil || lib.BackendPluginID == "" {
+		return nil
+	}
+	detail, err := h.backend.GetDetail(r.Context(), "", lib.BackendPluginID, backendBookID)
+	if err != nil || len(detail.Files) == 0 {
+		return nil
+	}
+	f := detail.Files[0]
+	trackURL := scheme + "://" + host + "/feed/" + slug +
+		"/track/" + strconv.Itoa(0) + "." + strings.ToLower(strings.TrimPrefix(f.Format, "."))
+	return &rssItem{
+		Title:       detail.Title,
+		Description: detail.Description,
+		PubDate:     time.Now().UTC().Format(time.RFC1123Z),
+		GUID:        rssGUID{Value: encoded, IsPermalink: "false"},
+		Enclosure: rssEnclosure{
+			URL:    trackURL,
+			Length: strconv.FormatInt(f.SizeBytes, 10),
+			Type:   f.MimeType,
+		},
+		ITunes: itunesItem{
+			Author:   authorRefsCombined(detail.AuthorRefs),
+			Duration: strconv.Itoa(int(f.DurationSeconds)),
+			Image:    itunesImage{Href: absoluteCover(scheme, host, detail.CoverPath)},
+		},
+	}
 }
 
 func (h *Handler) lookupFeedTitle(r *http.Request, entityType, entityID string) string {
