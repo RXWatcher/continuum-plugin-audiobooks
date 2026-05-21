@@ -210,6 +210,9 @@ func (h *Handler) Mount(r chi.Router) {
 		r.Get("/abs/api/items/{id}", h.handleItem)
 		r.Get("/abs/api/items/{id}/cover", h.handleItemCover)
 		r.Post("/abs/api/items/{id}/play", h.handlePlay)
+		// Podcast play — episode-scoped session. Real ABS uses
+		// /api/items/{podcastId}/play/{episodeId}; ours is the same path.
+		r.Post("/abs/api/items/{id}/play/{episodeId}", h.handlePlayEpisode)
 		r.Get("/abs/api/me/progress/{itemId}", h.handleGetProgress)
 		r.Patch("/abs/api/me/progress/{itemId}", h.handlePatchProgress)
 		r.Patch("/abs/api/session/{sid}", h.handleSessionSync)
@@ -282,10 +285,21 @@ func absLibraryMap(lib store.PortalLibrary) map[string]any {
 	if strings.TrimSpace(name) == "" {
 		name = VirtualLibraryName
 	}
+	// Honour the library's declared media type so podcast libraries
+	// surface as mediaType=podcast (not the default book). ABS clients
+	// branch their UI on this — a podcast library renders an episode-
+	// scoped player, not a chapter-scoped one.
+	mediaType := lib.MediaType
+	if mediaType == "" {
+		mediaType = LibraryMediaType
+	}
+	if mediaType == "audiobook" {
+		mediaType = LibraryMediaType // "book" — ABS spec calls audiobooks "book"
+	}
 	return map[string]any{
 		"id":        absLibraryID(lib),
 		"name":      name,
-		"mediaType": LibraryMediaType,
+		"mediaType": mediaType,
 	}
 }
 
@@ -801,7 +815,19 @@ func (h *Handler) collectFilterData(r *http.Request, lib store.PortalLibrary) ma
 func (h *Handler) handleLibraryItems(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
 	lib, err := h.portalLibraryFromABSID(r.Context(), chi.URLParam(r, "id"))
-	if err != nil || lib.BackendPluginID == "" {
+	if err != nil {
+		http.Error(w, "library not found", http.StatusNotFound)
+		return
+	}
+	// Podcast libraries are served directly from the plugin's DB —
+	// there's no backend plugin contract for podcasts, the rows live
+	// here and operators seed them via the admin endpoints (or, in a
+	// follow-up, via an RSS feed refresher).
+	if lib.MediaType == "podcast" {
+		h.handlePodcastLibraryItems(w, r, lib)
+		return
+	}
+	if lib.BackendPluginID == "" {
 		http.Error(w, "no backend configured", http.StatusPreconditionFailed)
 		return
 	}
@@ -919,7 +945,18 @@ func (h *Handler) handleLibraryItems(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleItem(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
 	lib, backendBookID, encodedBookID, err := h.portalLibraryForBookRef(r.Context(), chi.URLParam(r, "id"))
-	if err != nil || lib.BackendPluginID == "" {
+	if err != nil {
+		http.Error(w, "item not found", http.StatusNotFound)
+		return
+	}
+	// Podcast libraries: backendBookID holds the podcast id directly
+	// (we don't proxy through a backend plugin for podcasts), and the
+	// detail comes from the plugin's own DB.
+	if lib.MediaType == "podcast" {
+		h.handlePodcastItem(w, r, lib, backendBookID, encodedBookID)
+		return
+	}
+	if lib.BackendPluginID == "" {
 		http.Error(w, "no backend configured", http.StatusPreconditionFailed)
 		return
 	}
@@ -1091,10 +1128,18 @@ func (h *Handler) handleSessionSync(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Mirror only the position (sess.BookID is verified to belong to
-	// a.UserID). Must NOT use UpsertProgress here: it would write
+	// a.UserID). Must NOT use Upsert*Progress here: it would write
 	// is_finished=false / progress_pct=0 every sync tick and silently
-	// un-finish a book the user explicitly marked finished.
-	_ = h.store.UpdateProgressPosition(r.Context(), a.UserID, sess.BookID, int(p.CurrentTime))
+	// un-finish a book/episode the user explicitly marked finished.
+	//
+	// Dispatch by sess.BookID prefix: "pe_..." sessions are podcast
+	// episodes and write to podcast_episode_progress; everything else
+	// is an audiobook session.
+	if rawEpisodeID, isEpisode := DecodePodcastEpisodeID(sess.BookID); isEpisode {
+		_ = h.store.UpdatePodcastEpisodeProgressPosition(r.Context(), a.UserID, rawEpisodeID, int(p.CurrentTime))
+	} else {
+		_ = h.store.UpdateProgressPosition(r.Context(), a.UserID, sess.BookID, int(p.CurrentTime))
+	}
 
 	// Push the new position to the user's other connected clients. We
 	// publish a slim shape rather than re-fetching progress + serialising
@@ -1512,6 +1557,22 @@ type progressBody struct {
 func (h *Handler) handleGetProgress(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
 	itemID := chi.URLParam(r, "itemId")
+	// Dispatch by id shape: "pe_<...>" routes to the per-episode progress
+	// table; everything else is an audiobook progress lookup. The prefix
+	// is stripped before the store call — stored episode ids are bare.
+	if rawEpisodeID, isEpisode := DecodePodcastEpisodeID(itemID); isEpisode {
+		p, err := h.store.GetPodcastEpisodeProgress(r.Context(), a.UserID, rawEpisodeID)
+		if errors.Is(err, store.ErrNotFound) {
+			http.Error(w, "progress not found", http.StatusNotFound)
+			return
+		}
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, http.StatusOK, podcastProgressToABS(a.UserID, p))
+		return
+	}
 	p, err := h.store.GetProgress(r.Context(), a.UserID, itemID)
 	if errors.Is(err, store.ErrNotFound) {
 		http.Error(w, "progress not found", http.StatusNotFound)
@@ -1530,6 +1591,30 @@ func (h *Handler) handlePatchProgress(w http.ResponseWriter, r *http.Request) {
 	var body progressBody
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	// Podcast progress goes to the per-episode table; same merge
+	// semantics as audiobook progress so a sync tick doesn't un-finish
+	// a manually-finished episode.
+	if rawEpisodeID, isEpisode := DecodePodcastEpisodeID(itemID); isEpisode {
+		cur, err := h.store.GetPodcastEpisodeProgress(r.Context(), a.UserID, rawEpisodeID)
+		if err != nil && !errors.Is(err, store.ErrNotFound) {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		next := makePodcastProgress(a.UserID, rawEpisodeID, cur, body)
+		if err := h.store.UpsertPodcastEpisodeProgress(r.Context(), next); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		updated, err := h.store.GetPodcastEpisodeProgress(r.Context(), a.UserID, rawEpisodeID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		payload := podcastProgressToABS(a.UserID, updated)
+		h.publish(a.UserID, "user_item_progress_updated", payload)
+		writeJSON(w, http.StatusOK, payload)
 		return
 	}
 	// Merge with existing row (if any) so the PATCH semantics hold: fields

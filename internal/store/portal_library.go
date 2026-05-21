@@ -84,11 +84,14 @@ func (s *Store) ReplacePortalLibraries(ctx context.Context, libs []PortalLibrary
 		if lib.Name == "" {
 			return fmt.Errorf("library %d: name is required", i+1)
 		}
-		if lib.BackendPluginID == "" {
-			return fmt.Errorf("library %q: backend plugin is required", lib.Name)
-		}
 		if lib.MediaType == "" {
 			lib.MediaType = "audiobook"
+		}
+		// Podcast libraries live entirely in this plugin's DB — there's
+		// no backend plugin to delegate to. Skip the required-backend
+		// check for them. Audiobook libraries still need a backend.
+		if lib.MediaType != "podcast" && lib.BackendPluginID == "" {
+			return fmt.Errorf("library %q: backend plugin is required", lib.Name)
 		}
 		if lib.ID > 0 {
 			_, err = tx.Exec(ctx, `
