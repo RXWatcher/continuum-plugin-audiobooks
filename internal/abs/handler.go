@@ -724,23 +724,96 @@ func (h *Handler) handleLibraryItems(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no backend configured", http.StatusPreconditionFailed)
 		return
 	}
-	p := backend.ListParams{}
-	if l := r.URL.Query().Get("limit"); l != "" {
-		if n, e := strconv.Atoi(l); e == nil {
-			p.Limit = n
+
+	q := r.URL.Query()
+	limit, page := readPagedQuery(r, 30)
+	sortBy := q.Get("sort")
+	sortDesc := q.Get("desc") == "1"
+	filterBy := q.Get("filter")
+	minified := q.Get("minified") == "1"
+	include := q.Get("include")
+
+	filter, hasFilter := ParseFilter(filterBy)
+
+	// Backend doesn't accept ABS filter syntax — when a filter is active we
+	// over-fetch and apply locally. Over-fetch cap is generous (5000) so
+	// medium libraries are exhaustively filtered; larger catalogs would
+	// need filter pushdown into the backend's ListCatalog contract (TODO).
+	fetchLimit := limit
+	if hasFilter || limit == 0 {
+		fetchLimit = 5000
+	}
+	p := backend.ListParams{
+		Limit:     fetchLimit,
+		LibraryID: backendLibraryID(lib),
+	}
+	if sortBy != "" {
+		p.Sort = sortBy
+		if sortDesc {
+			p.Order = "desc"
+		} else {
+			p.Order = "asc"
 		}
 	}
-	p.LibraryID = backendLibraryID(lib)
+
 	out, err := h.backend.ListCatalog(r.Context(), a.Token, lib.BackendPluginID, p)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadGateway)
 		return
 	}
-	results := make([]LibraryItem, len(out.Items))
-	for i, s := range out.Items {
-		results[i] = ToLibrarySummary(withPortalLibrarySummary(s, lib))
+
+	// Translate then optionally filter / paginate locally.
+	all := make([]LibraryItem, 0, len(out.Items))
+	for _, s := range out.Items {
+		all = append(all, ToLibrarySummary(withPortalLibrarySummary(s, lib)))
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"results": results, "total": out.Total})
+	if hasFilter {
+		filtered := make([]LibraryItem, 0, len(all))
+		for _, item := range all {
+			// Progress fields stay false here — backend summaries don't
+			// carry per-user progress; a follow-up join with store.Progress
+			// can light up the progress.* filters.
+			if filter.Matches(item, false, false, false) {
+				filtered = append(filtered, item)
+			}
+		}
+		all = filtered
+	}
+
+	total := len(all)
+	if !hasFilter && out.Total > total {
+		// Backend reported a larger unfiltered total; preserve it so
+		// clients don't show fewer "x of y" than really exist.
+		total = out.Total
+	}
+
+	// Slice for page/limit. limit=0 is the documented "return all" signal.
+	pageStart, pageEnd := 0, len(all)
+	if limit > 0 {
+		pageStart = page * limit
+		if pageStart > len(all) {
+			pageStart = len(all)
+		}
+		pageEnd = pageStart + limit
+		if pageEnd > len(all) {
+			pageEnd = len(all)
+		}
+	}
+	pageSlice := all[pageStart:pageEnd]
+
+	// Serialise — minified mode reshapes each item.
+	var results any
+	if minified {
+		mins := make([]MinifiedLibraryItem, len(pageSlice))
+		for i, it := range pageSlice {
+			mins[i] = Minify(it)
+		}
+		results = mins
+	} else {
+		results = pageSlice
+	}
+
+	writeJSON(w, http.StatusOK, pagedEnvelope(results, total, limit, page, sortBy, sortDesc, filterBy, minified, include))
 }
 
 func (h *Handler) handleItem(w http.ResponseWriter, r *http.Request) {
@@ -1083,10 +1156,15 @@ func (h *Handler) handleLibrarySeries(w http.ResponseWriter, r *http.Request) {
 
 // readPagedQuery parses the ABS ?limit=&page= query, falling back to the
 // supplied default limit.
+//
+// Special case: real ABS treats limit=0 as "return everything, no pagination",
+// NOT as "return zero rows". A client sending limit=0 explicitly asks for the
+// full result set. We surface that intent by returning limit=0 from this
+// helper and let the caller short-circuit pagination.
 func readPagedQuery(r *http.Request, defaultLimit int) (limit, page int) {
 	limit = defaultLimit
 	if v := r.URL.Query().Get("limit"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+		if n, err := strconv.Atoi(v); err == nil && n >= 0 {
 			limit = n
 		}
 	}
@@ -1096,6 +1174,26 @@ func readPagedQuery(r *http.Request, defaultLimit int) (limit, page int) {
 		}
 	}
 	return limit, page
+}
+
+// pagedEnvelope builds the full ABS pagination response shape. Real ABS
+// emits eight fields on every paged endpoint; clients that only read
+// `results` and `total` ignore the rest, but clients that read `filterBy`
+// (to render selected filter chips) or `sortBy`/`sortDesc` (to show the
+// active sort) silently break when those fields are absent. Centralising
+// the shape here means every paged handler gets the same envelope.
+func pagedEnvelope(results any, total, limit, page int, sortBy string, sortDesc bool, filterBy string, minified bool, include string) map[string]any {
+	return map[string]any{
+		"results":  results,
+		"total":    total,
+		"limit":    limit,
+		"page":     page,
+		"sortBy":   sortBy,
+		"sortDesc": sortDesc,
+		"filterBy": filterBy,
+		"minified": minified,
+		"include":  include,
+	}
 }
 
 // ---------- Personalized shelves ----------
