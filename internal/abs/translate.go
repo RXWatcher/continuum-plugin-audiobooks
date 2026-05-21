@@ -43,15 +43,32 @@ type SeriesObj struct {
 // LibraryItem is the ABS-shaped audiobook summary. AddedAt / UpdatedAt are
 // Unix milliseconds; some shelves on the home screen sort by these and
 // clients also expect them as ints (not strings).
+//
+// CollapsedSeries is non-nil only on items returned with
+// collapseseries=1. It folds every book in a series into a single
+// representative entry. ABS clients pattern-match on the presence of
+// this field to switch from "list of books" to "list of series" UI.
 type LibraryItem struct {
-	ID        string           `json:"id"`
-	LibraryID string           `json:"libraryId"`
-	FolderID  string           `json:"folderId"`
-	MediaType string           `json:"mediaType"`
-	Media     LibraryItemMedia `json:"media"`
-	NumTracks int              `json:"numTracks,omitempty"`
-	AddedAt   int64            `json:"addedAt"`
-	UpdatedAt int64            `json:"updatedAt"`
+	ID              string             `json:"id"`
+	LibraryID       string             `json:"libraryId"`
+	FolderID        string             `json:"folderId"`
+	MediaType       string             `json:"mediaType"`
+	Media           LibraryItemMedia   `json:"media"`
+	NumTracks       int                `json:"numTracks,omitempty"`
+	AddedAt         int64              `json:"addedAt"`
+	UpdatedAt       int64              `json:"updatedAt"`
+	CollapsedSeries *CollapsedSeriesV1 `json:"collapsedSeries,omitempty"`
+}
+
+// CollapsedSeriesV1 is the per-item annotation real ABS attaches when
+// collapseseries=1. The shape is "name + count + per-book books[]"; we
+// emit a stable subset since clients differ on which fields they read.
+type CollapsedSeriesV1 struct {
+	ID            string                 `json:"id"`
+	Name          string                 `json:"name"`
+	NameIgnorePrefix string              `json:"nameIgnorePrefix,omitempty"`
+	NumBooks      int                    `json:"numBooks"`
+	LibraryItemIDs []string              `json:"libraryItemIds"`
 }
 
 // LibraryItemMedia carries the bulk of the metadata.

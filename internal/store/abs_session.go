@@ -103,6 +103,21 @@ func (s *Store) GetABSSession(ctx context.Context, id string) (ABSSession, error
 	return sess, nil
 }
 
+// CountActiveABSSessions returns the number of sessions with closed_at
+// IS NULL. Cheap COUNT(*) suitable for the "listener_count" Socket.io
+// broadcast that fires on every session-open / session-close — we don't
+// want to load the full row set just to len() it.
+func (s *Store) CountActiveABSSessions(ctx context.Context) (int, error) {
+	row := s.pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM abs_playback_session WHERE closed_at IS NULL
+	`)
+	var n int
+	if err := row.Scan(&n); err != nil {
+		return 0, fmt.Errorf("count active sessions: %w", err)
+	}
+	return n, nil
+}
+
 // ListActiveABSSessions returns all sessions with closed_at IS NULL.
 func (s *Store) ListActiveABSSessions(ctx context.Context, limit int) ([]ABSSession, error) {
 	if limit <= 0 {

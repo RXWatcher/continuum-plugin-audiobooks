@@ -44,8 +44,12 @@ type Handler struct {
 //
 // Publishers must be non-blocking — handlers call this in the hot path of
 // REST writes and we don't want a slow socket to back up an HTTP response.
+//
+// Broadcast fans the event to every connected client regardless of user.
+// Used for global events like listener_count that aren't user-scoped.
 type EventPublisher interface {
 	Publish(userID, event string, payload any)
+	Broadcast(event string, payload any)
 }
 
 // HostLoginValidator validates username/password against the Continuum host.
@@ -122,6 +126,32 @@ func (h *Handler) publish(userID, event string, payload any) {
 		return
 	}
 	h.publisher.Publish(userID, event, payload)
+}
+
+// broadcast is the global-scope counterpart to publish. Used for events
+// that aren't tied to a single user (listener_count, item_added, ...).
+func (h *Handler) broadcast(event string, payload any) {
+	if h.publisher == nil {
+		return
+	}
+	h.publisher.Broadcast(event, payload)
+}
+
+// broadcastListenerCount fires a "listener_count" event with the current
+// active-session count. Called on session open and close so admin
+// dashboards / future per-listener UIs see live numbers without polling.
+// Best-effort: a Postgres hiccup logs at debug and skips the broadcast
+// rather than failing the surrounding HTTP write.
+func (h *Handler) broadcastListenerCount(ctx context.Context) {
+	if h.publisher == nil || h.store == nil {
+		return
+	}
+	n, err := h.store.CountActiveABSSessions(ctx)
+	if err != nil {
+		h.logger.Debug("listener_count: count failed", "err", err.Error())
+		return
+	}
+	h.broadcast("listener_count", map[string]any{"count": n})
 }
 
 // absBaseURL returns the URL prefix the ABS client should resolve any
@@ -759,6 +789,7 @@ func (h *Handler) handleLibraryItems(w http.ResponseWriter, r *http.Request) {
 	sortDesc := q.Get("desc") == "1"
 	filterBy := q.Get("filter")
 	minified := q.Get("minified") == "1"
+	collapseSeries := q.Get("collapseseries") == "1"
 	include := q.Get("include")
 
 	filter, hasFilter := ParseFilter(filterBy)
@@ -822,19 +853,30 @@ func (h *Handler) handleLibraryItems(w http.ResponseWriter, r *http.Request) {
 		total = out.Total
 	}
 
+	// Collapse-by-series: real ABS clients pass collapseseries=1 to
+	// fold every book in a series into a single representative entry
+	// carrying a "collapsedSeries" block listing the constituents. Done
+	// BEFORE paging so the page slice is correctly sized in terms of
+	// collapsed entries.
+	collapsed := all
+	if collapseSeries {
+		collapsed = CollapseBySeries(all)
+		total = len(collapsed)
+	}
+
 	// Slice for page/limit. limit=0 is the documented "return all" signal.
-	pageStart, pageEnd := 0, len(all)
+	pageStart, pageEnd := 0, len(collapsed)
 	if limit > 0 {
 		pageStart = page * limit
-		if pageStart > len(all) {
-			pageStart = len(all)
+		if pageStart > len(collapsed) {
+			pageStart = len(collapsed)
 		}
 		pageEnd = pageStart + limit
-		if pageEnd > len(all) {
-			pageEnd = len(all)
+		if pageEnd > len(collapsed) {
+			pageEnd = len(collapsed)
 		}
 	}
-	pageSlice := all[pageStart:pageEnd]
+	pageSlice := collapsed[pageStart:pageEnd]
 
 	// Serialise — minified mode reshapes each item.
 	var results any
@@ -986,6 +1028,7 @@ func (h *Handler) handlePlay(w http.ResponseWriter, r *http.Request) {
 		"deviceId":      deviceID,
 		"mediaPlayer":   p.MediaPlayer,
 	})
+	h.broadcastListenerCount(r.Context())
 	writeJSON(w, http.StatusOK, map[string]any{
 		"id":            sessionID,
 		"libraryItemId": encodedBookID,
@@ -1034,10 +1077,21 @@ func (h *Handler) handleSessionSync(w http.ResponseWriter, r *http.Request) {
 	// publish a slim shape rather than re-fetching progress + serialising
 	// — this is the hot path of the playback session and the consumer
 	// only needs the moved-to time.
-	h.publish(a.UserID, "user_item_progress_updated", map[string]any{
+	progressPayload := map[string]any{
 		"libraryItemId": sess.BookID,
 		"currentTime":   p.CurrentTime,
 		"sessionId":     sid,
+	}
+	h.publish(a.UserID, "user_item_progress_updated", progressPayload)
+	// user_session_updated mirrors what real ABS emits on every session
+	// tick. Some clients key off session events specifically (e.g. to
+	// keep the "now playing" widget in sync with another device) — they
+	// don't read user_item_progress_updated. Emit both.
+	h.publish(a.UserID, "user_session_updated", map[string]any{
+		"id":            sid,
+		"libraryItemId": sess.BookID,
+		"currentTime":   p.CurrentTime,
+		"timeListened":  p.TimeListened,
 	})
 
 	resp := map[string]any{"ok": true}
@@ -1063,6 +1117,7 @@ func (h *Handler) handleSessionClose(w http.ResponseWriter, r *http.Request) {
 		"id":            sid,
 		"libraryItemId": sess.BookID,
 	})
+	h.broadcastListenerCount(r.Context())
 	w.WriteHeader(http.StatusNoContent)
 }
 
