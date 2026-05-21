@@ -68,6 +68,7 @@ func (s *Server) Handler() http.Handler {
 		s.mountABSStandaloneRoutes(r)
 		s.mountPodcastAdminRoutes(r)
 		s.mountAdminRoutes(r)
+		s.mountContentRestrictionRoutes(r)
 		s.mountStreamRoutes(r)
 	})
 

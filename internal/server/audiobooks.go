@@ -210,7 +210,38 @@ func (s *Server) handleListAudiobooks(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadGateway, err.Error())
 		return
 	}
+	out.Items = s.applyContentRestriction(r, id.UserID, lib.ID, out.Items)
 	writeJSON(w, http.StatusOK, wrapCatalogItems(out, lib, id.UserID, s.mediaSigningSecret(r)))
+}
+
+// applyContentRestriction filters out audiobook summaries blocked by
+// the user's content_restriction row (if any). No-op when no row
+// exists. The genre + author lists come from the summary; tags +
+// narrators aren't on the summary so those rules only apply to the
+// detail surface (a follow-up plumbs the detail filter through).
+func (s *Server) applyContentRestriction(r *http.Request, userID string, libraryID int64, items []backend.AudiobookSummary) []backend.AudiobookSummary {
+	if s.d.Store == nil || userID == "" {
+		return items
+	}
+	restriction, err := s.d.Store.GetContentRestriction(r.Context(), userID)
+	if err != nil {
+		return items // no restriction or transient error — fail open
+	}
+	if restriction.UserID == "" {
+		return items
+	}
+	out := items[:0]
+	for _, item := range items {
+		authors := make([]string, 0, len(item.AuthorRefs)+len(item.Authors))
+		authors = append(authors, item.Authors...)
+		for _, a := range item.AuthorRefs {
+			authors = append(authors, a.Name)
+		}
+		if restriction.AllowsItem(libraryID, nil, nil, authors, item.Narrators, false) {
+			out = append(out, item)
+		}
+	}
+	return out
 }
 
 func (s *Server) handleSearchAudiobooks(w http.ResponseWriter, r *http.Request) {
