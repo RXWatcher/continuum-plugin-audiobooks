@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/auth"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/auth"
 )
 
 func TestFromHeaders(t *testing.T) {

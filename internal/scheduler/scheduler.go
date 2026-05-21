@@ -12,10 +12,10 @@ import (
 
 	pluginv1 "github.com/ContinuumApp/continuum-plugin-sdk/pkg/pluginproto/continuum/plugin/v1"
 
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/backend"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/libsync"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/podcastfeed"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/store"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/backend"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/libsync"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/podcastfeed"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/store"
 )
 
 // taskID extracts the capability id from a scheduled-task key. The Continuum

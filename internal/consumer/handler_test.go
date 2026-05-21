@@ -10,9 +10,9 @@ import (
 
 	pluginv1 "github.com/ContinuumApp/continuum-plugin-sdk/pkg/pluginproto/continuum/plugin/v1"
 
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/migrate"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/store"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/testutil"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/migrate"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/store"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/testutil"
 )
 
 func mustStruct(t *testing.T, m map[string]any) *structpb.Struct {

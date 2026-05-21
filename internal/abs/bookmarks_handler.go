@@ -8,7 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/oklog/ulid/v2"
 
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/store"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/store"
 )
 
 // Bookmark CRUD on the ABS surface.

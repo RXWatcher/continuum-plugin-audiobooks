@@ -8,10 +8,10 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/auth"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/backend"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/libsync"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/store"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/auth"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/backend"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/libsync"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/store"
 )
 
 // mountAdminRoutes wires admin-only endpoints. Each handler enforces admin

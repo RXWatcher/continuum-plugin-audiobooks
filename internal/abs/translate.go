@@ -5,7 +5,7 @@ import (
 	"strings"
 	"unicode"
 
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/backend"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/backend"
 )
 
 // VirtualLibraryID is the single library exposed to ABS clients.

@@ -5,9 +5,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/abs"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/abssocket"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/store"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/abs"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/abssocket"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/store"
 )
 
 // recordingLogger captures Warn/Debug calls so we can assert on auth-reject

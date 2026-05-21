@@ -9,7 +9,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/hostlogin"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/hostlogin"
 )
 
 // TestValidate_Success drives the client against a fake host returning the

@@ -12,13 +12,13 @@ import (
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/abs"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/auth"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/backend"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/event"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/podcastfeed"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/store"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/streaming"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/abs"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/auth"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/backend"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/event"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/podcastfeed"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/store"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/streaming"
 )
 
 // Deps wires the server's collaborators. SPA may be nil during early dev.

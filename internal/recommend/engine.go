@@ -10,8 +10,8 @@ import (
 
 	"github.com/pgvector/pgvector-go"
 
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/backend"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/store"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/backend"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/store"
 )
 
 // Logger is the narrow logging surface — hclog + slog both satisfy.

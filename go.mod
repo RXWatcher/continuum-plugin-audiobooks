@@ -1,4 +1,4 @@
-module github.com/ContinuumApp/continuum-plugin-audiobooks
+module github.com/RXWatcher/continuum-plugin-audiobooks
 
 go 1.26.0
 

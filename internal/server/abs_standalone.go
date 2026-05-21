@@ -5,8 +5,8 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/auth"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/store"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/auth"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/store"
 )
 
 // mountABSStandaloneRoutes wires the user-facing endpoints behind the

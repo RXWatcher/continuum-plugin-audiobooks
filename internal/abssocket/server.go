@@ -30,8 +30,8 @@ import (
 
 	"github.com/zishang520/socket.io/v2/socket"
 
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/abs"
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/store"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/abs"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/store"
 )
 
 // Logger is the narrow logging surface this package needs. Implementations

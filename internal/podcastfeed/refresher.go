@@ -22,7 +22,7 @@ import (
 	"github.com/mmcdole/gofeed"
 	"github.com/oklog/ulid/v2"
 
-	"github.com/ContinuumApp/continuum-plugin-audiobooks/internal/store"
+	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/store"
 )
 
 // Store is the narrow surface Refresher needs. Implemented by *store.Store;
