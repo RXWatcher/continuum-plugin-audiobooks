@@ -72,6 +72,7 @@ func (s *Server) Handler() http.Handler {
 		s.mountCustomMetadataProviderRoutes(r)
 		s.mountReadingSessionRoutes(r)
 		s.mountBookDropRoutes(r)
+		s.mountEnrichRoutes(r)
 		s.mountStreamRoutes(r)
 	})
 
