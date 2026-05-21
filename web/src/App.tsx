@@ -16,6 +16,7 @@ import PodcastDetail from '@/pages/PodcastDetail';
 import SmartCollections from '@/pages/SmartCollections';
 import SmartCollectionDetail from '@/pages/SmartCollectionDetail';
 import Stats from '@/pages/Stats';
+import Settings from '@/pages/Settings';
 import Apps from '@/pages/Apps';
 import MyRequests from '@/pages/MyRequests';
 import Admin from '@/pages/admin/Admin';
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="/smart-collections" element={<SmartCollections />} />
           <Route path="/smart-collections/:id" element={<SmartCollectionDetail />} />
           <Route path="/me/stats" element={<Stats />} />
+          <Route path="/me/settings" element={<Settings />} />
           <Route path="/podcasts" element={<Podcasts />} />
           <Route path="/podcasts/:id" element={<PodcastDetail />} />
           <Route path="/apps" element={<Apps />} />

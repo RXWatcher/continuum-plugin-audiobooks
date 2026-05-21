@@ -146,6 +146,16 @@ export interface SmartCollectionQuery {
   limit?: number;
 }
 
+// Notification preferences — per (category, delivery) toggle.
+// Missing rows default to enabled (opt-out semantics).
+export interface NotificationPref {
+  user_id: string;
+  category: string;
+  delivery: 'inapp' | 'email' | 'push' | string;
+  enabled: boolean;
+  updated_at?: string;
+}
+
 // Reading goals — per (year, kind) target. kind: "books" | "hours".
 export interface ReadingGoal {
   user_id: string;

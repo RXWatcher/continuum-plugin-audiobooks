@@ -23,6 +23,7 @@ import type {
   Progress,
   GoalProgress,
   HeatmapResponse,
+  NotificationPref,
   Rating,
   ReadingGoal,
   SeriesSummary,
@@ -464,6 +465,23 @@ export const api = {
     ),
   getYearStats: (year: number) =>
     authedFetch(`${apiBase()}/me/stats/year/${year}`).then(jsonOrThrow<YearStats>),
+
+  // Notification preferences — opt-out semantics: missing rows
+  // mean "enabled by default".
+  getNotificationCatalog: () =>
+    authedFetch(`${apiBase()}/me/notification-prefs/catalog`).then(
+      jsonOrThrow<{ categories: string[]; deliveries: string[] }>,
+    ),
+  listNotificationPrefs: () =>
+    authedFetch(`${apiBase()}/me/notification-prefs`).then(
+      jsonOrThrow<{ items: NotificationPref[] }>,
+    ),
+  putNotificationPref: (category: string, delivery: string, enabled: boolean) =>
+    authedFetch(`${apiBase()}/me/notification-prefs`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, delivery, enabled }),
+    }).then(noContentOrThrow),
 
   // Podcasts — read endpoints (authenticated user).
   listPodcasts: (libraryID?: number) => {
