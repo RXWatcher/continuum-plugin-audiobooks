@@ -140,6 +140,11 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
   const sessionId = useRef<string | null>(null);
   const pendingFileTime = useRef<number | null>(null);
   const shouldPlayAfterLoad = useRef(false);
+  // Tracks whether the user has actually tried to play. Browsers fire onError
+  // during preload (bad URL, expired token, network blip) even when nothing
+  // has been requested — surfacing those as "Playback failed" before any
+  // user action is misleading.
+  const playAttemptedRef = useRef(false);
   const lastSync = useRef(0);
   const bookTimeRef = useRef(0);
   const pausedAt = useRef<number | null>(null);
@@ -250,7 +255,10 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       setFileOrdinal(filePos.fileOrdinal);
       if (audioRef.current && filePos.fileOrdinal === fileOrdinal) {
         audioRef.current.currentTime = filePos.fileTime;
-        if (keepPlaying) void audioRef.current.play().catch(() => setPlaying(false));
+        if (keepPlaying) {
+          playAttemptedRef.current = true;
+          void audioRef.current.play().catch(() => setPlaying(false));
+        }
       }
       void sync(target, false);
     },
@@ -274,6 +282,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
       const filePos = positionToFileTime(nextTimeline, resume);
       pendingFileTime.current = filePos.fileTime;
       shouldPlayAfterLoad.current = false;
+      playAttemptedRef.current = false;
       setAudiobook(nextBook);
       setBookTime(resume);
       setFileOrdinal(filePos.fileOrdinal);
@@ -338,8 +347,12 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 
   const toggle = useCallback(() => {
     if (!audioRef.current) return;
-    if (audioRef.current.paused) void audioRef.current.play();
-    else audioRef.current.pause();
+    if (audioRef.current.paused) {
+      playAttemptedRef.current = true;
+      void audioRef.current.play();
+    } else {
+      audioRef.current.pause();
+    }
   }, []);
 
   const setSpeed = useCallback((next: number) => {
@@ -825,12 +838,23 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
 	    ],
 	  );
 
+  // Resolve the audio src up-front so we can skip rendering <audio> when
+  // there's nothing to play. An <audio> with src="" fires onError immediately
+  // — that's what surfaces "Playback failed" before the user clicks play.
+  const resolvedAudioSrc =
+    sourceUrl ||
+    (audiobook && activeFile
+      ? streamPlaybackSource.urlForFile(
+          audiobook.files.find((f) => f.index === activeFile.fileIndex) ??
+            audiobook.files[0],
+        )
+      : "");
   return (
     <PlaybackContext.Provider value={value}>
-      {activeFile && audiobook ? (
+      {activeFile && audiobook && resolvedAudioSrc ? (
         <audio
           ref={audioRef}
-          src={sourceUrl || streamPlaybackSource.urlForFile(audiobook.files.find((f) => f.index === activeFile.fileIndex) ?? audiobook.files[0])}
+          src={resolvedAudioSrc}
           preload="metadata"
           onLoadedMetadata={(event) => {
             const audio = event.currentTarget;
@@ -842,6 +866,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
             }
             if (shouldPlayAfterLoad.current) {
               shouldPlayAfterLoad.current = false;
+              playAttemptedRef.current = true;
               void audio.play().catch(() => setPlaying(false));
             }
           }}
@@ -874,6 +899,7 @@ export function PlaybackProvider({ children }: { children: ReactNode }) {
           onError={() => {
             setPlaying(false);
             setBuffering(false);
+            if (!playAttemptedRef.current) return;
             setError('Playback failed. Try again or reload the stream.');
           }}
           onEnded={() => {
