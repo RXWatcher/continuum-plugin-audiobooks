@@ -256,6 +256,7 @@ func (h *Handler) Mount(r chi.Router) {
 			r.Delete(prefix+"/me/item/{itemId}/bookmark/{time}", h.handleDeleteBookmark)
 			r.Patch(prefix+"/session/{sid}", h.handleSessionSync)
 			r.Post(prefix+"/session/{sid}/close", h.handleSessionClose)
+			h.mountSmartCollectionRoutes(prefix, r)
 		}
 	})
 
