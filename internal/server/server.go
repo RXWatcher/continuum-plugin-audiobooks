@@ -71,6 +71,7 @@ func (s *Server) Handler() http.Handler {
 		s.mountContentRestrictionRoutes(r)
 		s.mountCustomMetadataProviderRoutes(r)
 		s.mountReadingSessionRoutes(r)
+		s.mountBookDropRoutes(r)
 		s.mountStreamRoutes(r)
 	})
 
