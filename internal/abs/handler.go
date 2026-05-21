@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	neturl "net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -1596,7 +1597,7 @@ func pagedEnvelope(results any, total, limit, page int, sortBy string, sortDesc 
 func (h *Handler) handlePersonalized(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
 	lib, err := h.portalLibraryFromABSID(r.Context(), chi.URLParam(r, "id"))
-	if err != nil || lib.BackendPluginID == "" {
+	if err != nil {
 		writeJSON(w, http.StatusOK, []map[string]any{})
 		return
 	}
@@ -1607,13 +1608,26 @@ func (h *Handler) handlePersonalized(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	// Podcast libraries have their own shelf set (recent-episodes,
+	// newest-podcasts). Real ABS emits these for mediaType=podcast
+	// libraries; mobile renders a different home tab for them.
+	if lib.MediaType == "podcast" {
+		h.podcastPersonalized(w, r, lib, limit)
+		return
+	}
+
+	if lib.BackendPluginID == "" {
+		writeJSON(w, http.StatusOK, []map[string]any{})
+		return
+	}
+
 	shelves := []map[string]any{
-		{"id": "continue-listening", "label": "Continue Listening", "labelStringKey": "LabelContinueListening", "type": "book", "entities": []any{}},
-		{"id": "continue-series", "label": "Continue Series", "labelStringKey": "LabelContinueSeries", "type": "book", "entities": []any{}},
-		{"id": "newest", "label": "Newest", "labelStringKey": "LabelNewest", "type": "book", "entities": []any{}},
-		{"id": "recent-series", "label": "Recent Series", "labelStringKey": "LabelRecentSeries", "type": "series", "entities": []any{}},
-		{"id": "discover", "label": "Discover", "labelStringKey": "LabelDiscover", "type": "book", "entities": []any{}},
-		{"id": "listen-again", "label": "Listen Again", "labelStringKey": "LabelListenAgain", "type": "book", "entities": []any{}},
+		{"id": "continue-listening", "label": "Continue Listening", "labelStringKey": "LabelContinueListening", "type": "book", "entities": []any{}, "total": 0},
+		{"id": "continue-series", "label": "Continue Series", "labelStringKey": "LabelContinueSeries", "type": "book", "entities": []any{}, "total": 0},
+		{"id": "newest", "label": "Newest", "labelStringKey": "LabelNewest", "type": "book", "entities": []any{}, "total": 0},
+		{"id": "recent-series", "label": "Recent Series", "labelStringKey": "LabelRecentSeries", "type": "series", "entities": []any{}, "total": 0},
+		{"id": "discover", "label": "Discover", "labelStringKey": "LabelDiscover", "type": "book", "entities": []any{}, "total": 0},
+		{"id": "listen-again", "label": "Listen Again", "labelStringKey": "LabelListenAgain", "type": "book", "entities": []any{}, "total": 0},
 	}
 
 	// Resolve progress rows; classify by is_finished + progress_pct.
@@ -1654,7 +1668,9 @@ func (h *Handler) handlePersonalized(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	shelves[0]["entities"] = contPaths
+	shelves[0]["total"] = len(contPaths)
 	shelves[5]["entities"] = againPaths
+	shelves[5]["total"] = len(againPaths)
 
 	// newest + discover come from the catalog list. We sort by added_at
 	// desc when the backend supports it. For "discover" we exclude items
@@ -1681,7 +1697,9 @@ func (h *Handler) handlePersonalized(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		shelves[2]["entities"] = newest
+		shelves[2]["total"] = listOut.Total
 		shelves[4]["entities"] = discover
+		shelves[4]["total"] = listOut.Total // approx — discover's filtering happens after
 	}
 
 	// recent-series: take the first N series the backend returns. Each
@@ -1698,6 +1716,7 @@ func (h *Handler) handlePersonalized(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 		shelves[3]["entities"] = recent
+		shelves[3]["total"] = seriesOut.Total
 	}
 
 	// continue-series: drift — the v1 backend has no "next book in series
@@ -1706,6 +1725,122 @@ func (h *Handler) handlePersonalized(w http.ResponseWriter, r *http.Request) {
 	// next sequence.
 
 	writeJSON(w, http.StatusOK, shelves)
+}
+
+// podcastPersonalized emits the podcast-library variant of the home
+// shelves. Real ABS uses three shelves for podcast libraries:
+//
+//	recent-episodes — most-recently-published episodes across all
+//	                  subscribed podcasts; each entity is a LibraryItem
+//	                  with a `recentEpisode` field set
+//	listen-again    — finished podcasts (analogue of book listen-again)
+//	newest-podcasts — most-recently-added podcasts in this library
+//
+// We populate recent-episodes + newest-podcasts; listen-again is
+// emitted with an empty entities[] (podcast "finished" semantics are
+// per-episode, not per-podcast).
+func (h *Handler) podcastPersonalized(w http.ResponseWriter, r *http.Request, lib store.PortalLibrary, limit int) {
+	shelves := []map[string]any{
+		{"id": "recent-episodes", "label": "Recent Episodes", "labelStringKey": "LabelRecentEpisodes", "type": "episode", "entities": []any{}, "total": 0},
+		{"id": "newest-podcasts", "label": "Newest Podcasts", "labelStringKey": "LabelNewestPodcasts", "type": "podcast", "entities": []any{}, "total": 0},
+		{"id": "listen-again", "label": "Listen Again", "labelStringKey": "LabelListenAgain", "type": "episode", "entities": []any{}, "total": 0},
+	}
+
+	podcasts, err := h.store.ListPodcasts(r.Context(), lib.ID, 0)
+	if err != nil {
+		h.logger.Warn("podcast personalized: list podcasts", "err", err.Error())
+		writeJSON(w, http.StatusOK, shelves)
+		return
+	}
+
+	// newest-podcasts: top N by updated_at desc (ListPodcasts returns
+	// in that order already).
+	newest := make([]any, 0, limit)
+	for i, p := range podcasts {
+		if i >= limit {
+			break
+		}
+		encoded := bookref.Encode(p.LibraryID, p.ID)
+		// Count episodes for the shelf entity badge.
+		episodes, _ := h.store.ListPodcastEpisodes(r.Context(), p.ID, 0)
+		newest = append(newest, ToPodcastSummary(p, len(episodes), encoded))
+	}
+	shelves[1]["entities"] = newest
+	shelves[1]["total"] = len(podcasts)
+
+	// recent-episodes: gather every podcast's episodes, sort by
+	// published_at desc, take top N. Episodes carry the parent
+	// libraryItem (the podcast) + a recentEpisode pointer so clients
+	// render "podcast title — episode title".
+	type recent struct {
+		podcast store.Podcast
+		episode store.PodcastEpisode
+	}
+	all := make([]recent, 0, 256)
+	for _, p := range podcasts {
+		eps, err := h.store.ListPodcastEpisodes(r.Context(), p.ID, 100)
+		if err != nil {
+			continue
+		}
+		for _, e := range eps {
+			all = append(all, recent{podcast: p, episode: e})
+		}
+	}
+	// Sort: published_at desc (nil published_at sinks to bottom via the
+	// zero-value time, which is fine for ordering — clients don't sort
+	// again).
+	sort.Slice(all, func(i, j int) bool {
+		ip, jp := timeOrZero(all[i].episode.PublishedAt), timeOrZero(all[j].episode.PublishedAt)
+		return ip.After(jp)
+	})
+	entities := make([]any, 0, limit)
+	for i, r := range all {
+		if i >= limit {
+			break
+		}
+		encoded := bookref.Encode(r.podcast.LibraryID, r.podcast.ID)
+		// Embed the podcast as the parent LibraryItem; the
+		// recentEpisode block tells clients which episode triggered
+		// the recency without a second fetch.
+		podcastItem := ToPodcastSummary(r.podcast, 1, encoded)
+		ep := r.episode
+		var pubMs int64
+		if ep.PublishedAt != nil {
+			pubMs = ep.PublishedAt.UnixMilli()
+		}
+		entities = append(entities, map[string]any{
+			"id":        encoded,
+			"libraryId": podcastItem.LibraryID,
+			"folderId":  podcastItem.FolderID,
+			"mediaType": "podcast",
+			"media":     podcastItem.Media,
+			"addedAt":   podcastItem.AddedAt,
+			"updatedAt": podcastItem.UpdatedAt,
+			"recentEpisode": map[string]any{
+				"id":            EncodePodcastEpisodeID(ep.ID),
+				"libraryItemId": encoded,
+				"title":         ep.Title,
+				"description":   ep.Description,
+				"duration":      float64(ep.DurationSeconds),
+				"publishedAt":   pubMs,
+				"audioBytes":    ep.AudioBytes,
+				"mimeType":      ep.AudioMimeType,
+			},
+		})
+	}
+	shelves[0]["entities"] = entities
+	shelves[0]["total"] = len(all)
+
+	writeJSON(w, http.StatusOK, shelves)
+}
+
+// timeOrZero returns *time.Time's value, or the zero time if nil.
+// Used in sort.Slice closures where we need a comparable time.
+func timeOrZero(t *time.Time) time.Time {
+	if t == nil {
+		return time.Time{}
+	}
+	return *t
 }
 
 // ---------- Progress (ABS-shaped) ----------
