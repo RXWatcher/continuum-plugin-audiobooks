@@ -21,6 +21,7 @@ import type {
   Podcast,
   PodcastEpisode,
   Progress,
+  ActivityEvent,
   GoalProgress,
   HeatmapResponse,
   NotificationPref,
@@ -483,6 +484,12 @@ export const api = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ category, delivery, enabled }),
     }).then(noContentOrThrow),
+
+  // Per-book activity timeline.
+  getBookActivity: (bookId: string) =>
+    authedFetch(`${apiBase()}/me/books/${encodeURIComponent(bookId)}/activity`).then(
+      jsonOrThrow<{ events: ActivityEvent[] }>,
+    ),
 
   // Share links — list-revoke from the user's settings page.
   listShareLinks: () =>

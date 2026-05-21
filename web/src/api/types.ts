@@ -146,6 +146,21 @@ export interface SmartCollectionQuery {
   limit?: number;
 }
 
+// Per-book activity event. Server merges progress / bookmark /
+// session / rating / share-link rows for one (user, book).
+export interface ActivityEvent {
+  at: string;
+  kind:
+    | 'progress'
+    | 'bookmark'
+    | 'session_opened'
+    | 'session_closed'
+    | 'rated'
+    | 'shared'
+    | string;
+  payload?: Record<string, unknown>;
+}
+
 // Share links — slug-based public capability minted by the owner
 // of an item. Expires_at can be null for "no expiry".
 export interface ShareLink {

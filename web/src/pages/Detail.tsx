@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import AudioPlayer from '@/components/player/AudioPlayer';
 import ChapterList from '@/components/ChapterList';
 import BookmarkList from '@/components/BookmarkList';
+import BookActivity from '@/components/BookActivity';
 import { Skeleton } from '@/components/ui/skeleton';
 import { usePlayback } from '@/player/PlaybackProvider';
 
@@ -272,6 +273,10 @@ export default function Detail() {
           onDelete={(bmId) => removeBookmark.mutate(bmId)}
           onSelect={(position) => setSeekRequest({ id: Date.now(), position })}
         />
+      </section>
+
+      <section>
+        <BookActivity bookId={id} />
       </section>
 
       <section>
