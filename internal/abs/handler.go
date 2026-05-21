@@ -585,6 +585,29 @@ type refreshPayload struct {
 	RefreshToken string `json:"refreshToken"`
 }
 
+// handleRefresh rotates the ABS access + refresh JWT pair. The contract:
+//
+//  1. Decode the inbound refresh JWT against the active signing secret.
+//  2. Confirm the JTI exists in abs_tokens and isn't revoked.
+//  3. Mint a fresh access + refresh pair with new JTIs.
+//  4. Insert both new JTIs into abs_tokens.
+//  5. Revoke the old refresh JTI.
+//
+// The order matters — if step 4 fails, the client retries with the still-
+// valid old refresh token and is no worse off. If step 5 fails after step
+// 4 succeeds, the client gets a new pair but the old refresh stays valid
+// until step 5 succeeds on a later retry; that's an acceptable degradation
+// vs serving an inconsistent pair. Access tokens minted before the rotation
+// remain valid until their own TTL expires — that's by design, the same
+// way every other access-+-refresh-token system behaves.
+//
+// Concurrency note: two simultaneous refreshes with the same old token
+// each pass the JTI-valid check, each insert their new JTIs (different
+// ULIDs so no conflict), and each revoke the old JTI (idempotent). The
+// client gets one of two new refresh tokens depending on response order;
+// the other is discarded on the next refresh. We don't try to detect
+// "double-refresh from different IPs" as a theft signal — ABS clients
+// don't have that signal anyway.
 func (h *Handler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	var p refreshPayload
 	if err := json.NewDecoder(r.Body).Decode(&p); err != nil || p.RefreshToken == "" {

@@ -197,21 +197,47 @@ implement the contract apply an index hit; backends that don't are
 documented to ignore the params (we still apply the filter locally on
 the response).
 
-### Tier 3 — intentionally not implemented
+### Tier 3 — audited and dispositioned
 
-These were considered but skipped because the booklore documentation
-shows real ABS doesn't standardise them either:
+The original Tier 3 list was skipped on first pass because the booklore
+documentation didn't pin down a spec for them. On a second-pass audit
+each was either already covered, owned by another layer, or
+deliberately deferred for lack of an integration target:
 
-- Refresh-token endpoint and rotation (real ABS uses long-lived access
-  tokens; clients re-login when expired).
-- Push-notification registration (no documented spec).
-- Sharing tokens / public-link tokens (no documented spec).
-- CSRF protection (ABS mobile clients are stateless API consumers and
-  don't carry browser cookies; the host front door owns CSRF for the
-  portal SPA).
-- Podcast/episode parallel schema (the audiobooks plugin is
-  audiobook-only by scope — the ebooks plugin handles ebook + podcast
-  flows separately).
+- **Refresh-token rotation**: present and correct.
+  `/abs/api/auth/refresh` validates the inbound refresh token, mints a
+  new pair, inserts both new JTIs, and revokes the old refresh JTI.
+  Failure order is safe (step 4 before 5 means a mid-rotation crash
+  leaves the client retriable on the old refresh). Concurrency note in
+  the handler docstring: simultaneous double-refresh from one client
+  is tolerated. No code changes needed.
+
+- **CSRF protection**: owned by the continuum host. The host's portal
+  session cookie carries `SameSite=Lax`
+  (`continuum/internal/api/handlers/auth.go:349`), which blocks the
+  cross-site state-changing POST attack vector at the front door.
+  Plugin routes inherit the protection because the host's plugin
+  proxy refuses to forward requests without a validated session.
+  Plugin-level CSRF would be a duplicative defense layer; not added.
+
+- **Push-notification registration**: deferred. Real ABS doesn't
+  publish a stable spec for it, and implementing the feature requires
+  an integration target (FCM, APNs, or a custom relay) that we don't
+  currently have. Building a registration endpoint with no consumer
+  would add maintenance surface for no benefit. Revisit when there is
+  a specific client UX that needs it.
+
+- **Sharing tokens / public-link tokens**: deferred for the same
+  reason as push notifications. Without a documented ABS spec or a
+  consumer UI, the shape of the share endpoint would be invented from
+  scratch — and a future spec landing on different semantics would
+  force a breaking change. Revisit if a real client asks for it.
+
+- **Podcast/episode parallel schema**: out of scope for the audiobooks
+  plugin. The ebooks plugin handles ebook + podcast flows separately;
+  audiobook-only listeners aren't affected. A dedicated podcasts
+  plugin would be the right home for this surface, not a parallel
+  schema bolted onto audiobooks.
 
 ### Standalone-listener audio streaming
 
