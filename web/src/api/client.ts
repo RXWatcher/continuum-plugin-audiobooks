@@ -1,6 +1,7 @@
 import { mountPath } from '@/lib/mountPath';
 import { getCachedToken, setCachedToken } from '@/lib/auth';
 import type {
+  ABSLibraryItem,
   ABSSession,
   ABSStandaloneOptInState,
   ABSToken,
@@ -399,10 +400,21 @@ export const api = {
       `${absApiBase()}/me/smart-collections/${encodeURIComponent(id)}`,
     ).then(jsonOrThrow<SmartCollection>),
 
+  // Items endpoint returns the ABS pagedEnvelope shape
+  // ({results, total, limit, page, sortBy, ...}) since it lives
+  // on the ABS dual-mount. Caller flattens results[].media.metadata
+  // into the SPA's expected shape.
   getSmartCollectionItems: (id: string, page = 0, limit = 30) =>
     authedFetch(
       `${absApiBase()}/me/smart-collections/${encodeURIComponent(id)}/items?page=${page}&limit=${limit}`,
-    ).then(jsonOrThrow<PageEnvelope<AudiobookSummary>>),
+    ).then(
+      jsonOrThrow<{
+        results: ABSLibraryItem[];
+        total: number;
+        limit: number;
+        page: number;
+      }>,
+    ),
 
   createSmartCollection: (body: {
     name: string;

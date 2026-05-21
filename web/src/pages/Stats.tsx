@@ -65,18 +65,18 @@ export default function Stats() {
             yearStats.isLoading ? (
               <Skeleton className="h-7 w-14" />
             ) : (
-              <>{Math.round(yearStats.data?.total_hours ?? 0)}</>
+              <>{Math.round((yearStats.data?.total_seconds ?? 0) / 3600)}</>
             )
           }
         />
         <StatCard
           icon={<Trophy className="size-5" />}
-          label="Books finished"
+          label="Distinct books"
           value={
             yearStats.isLoading ? (
               <Skeleton className="h-7 w-14" />
             ) : (
-              <>{yearStats.data?.books_finished ?? 0}</>
+              <>{yearStats.data?.distinct_books ?? 0}</>
             )
           }
         />
@@ -99,12 +99,6 @@ export default function Stats() {
 
       <TopBooksCard
         top={yearStats.data?.top_books ?? []}
-        loading={yearStats.isLoading}
-      />
-
-      <TopVoicesCard
-        authors={yearStats.data?.top_authors ?? []}
-        narrators={yearStats.data?.top_narrators ?? []}
         loading={yearStats.isLoading}
       />
     </div>
@@ -254,13 +248,18 @@ function GoalRow({
   );
 }
 
+// HeatmapCell is the SPA-internal cell shape — normalised from
+// the server's HeatmapDay so the grid layout doesn't care about
+// the wire format.
+type HeatmapCell = { date: string; seconds: number };
+
 function HeatmapCard({ days, loading }: { days: HeatmapDay[]; loading: boolean }) {
   // GitHub-style heatmap grid: 13 weeks × 7 days = last 90 days.
   // Each cell colour-coded by seconds listened — log scale so a
   // 5-minute peek doesn't look identical to a 4-hour binge.
   const cells = useMemo(() => buildHeatmapCells(days), [days]);
   const maxSeconds = useMemo(
-    () => days.reduce((m, d) => Math.max(m, d.seconds), 0),
+    () => days.reduce((m, d) => Math.max(m, d.seconds_played), 0),
     [days],
   );
   return (
@@ -269,7 +268,9 @@ function HeatmapCard({ days, loading }: { days: HeatmapDay[]; loading: boolean }
       {loading ? (
         <Skeleton className="h-24 w-full" />
       ) : days.length === 0 ? (
-        <p className="text-muted-foreground text-sm">No listening sessions yet.</p>
+        <p className="text-muted-foreground text-sm">
+          No listening sessions yet.
+        </p>
       ) : (
         <div className="flex gap-1">
           {cells.map((week, wi) => (
@@ -279,7 +280,9 @@ function HeatmapCard({ days, loading }: { days: HeatmapDay[]; loading: boolean }
                   <div
                     key={di}
                     className="size-3 rounded-sm"
-                    style={{ backgroundColor: heatColor(cell.seconds, maxSeconds) }}
+                    style={{
+                      backgroundColor: heatColor(cell.seconds, maxSeconds),
+                    }}
                     title={`${cell.date}: ${formatHM(cell.seconds)}`}
                   />
                 ) : (
@@ -298,7 +301,7 @@ function TopBooksCard({
   top,
   loading,
 }: {
-  top: { book_id: string; title?: string; authors?: string[]; seconds_listened: number }[];
+  top: { book_id: string; seconds_played: number; session_count: number }[];
   loading: boolean;
 }) {
   return (
@@ -307,22 +310,27 @@ function TopBooksCard({
       {loading ? (
         <Skeleton className="h-32 w-full" />
       ) : top.length === 0 ? (
-        <p className="text-muted-foreground text-sm">No listening sessions yet.</p>
+        <p className="text-muted-foreground text-sm">
+          No listening sessions yet.
+        </p>
       ) : (
         <ol className="space-y-2">
-          {top.slice(0, 8).map((b, i) => (
-            <li key={b.book_id} className="flex items-baseline justify-between text-sm">
-              <span className="truncate">
-                <span className="text-muted-foreground mr-2 tabular-nums">{i + 1}.</span>
-                <span className="font-medium">{b.title ?? b.book_id}</span>
-                {b.authors?.length ? (
-                  <span className="text-muted-foreground ml-2">
-                    by {b.authors.join(', ')}
-                  </span>
-                ) : null}
-              </span>
+          {top.slice(0, 10).map((b, i) => (
+            <li
+              key={b.book_id}
+              className="flex items-baseline justify-between text-sm"
+            >
+              <a
+                href={`#/audiobook/${encodeURIComponent(b.book_id)}`}
+                className="min-w-0 flex-1 truncate hover:underline"
+              >
+                <span className="text-muted-foreground mr-2 tabular-nums">
+                  {i + 1}.
+                </span>
+                <span className="font-medium">{b.book_id}</span>
+              </a>
               <span className="text-muted-foreground tabular-nums text-xs">
-                {formatHM(b.seconds_listened)}
+                {formatHM(b.seconds_played)}
               </span>
             </li>
           ))}
@@ -332,53 +340,25 @@ function TopBooksCard({
   );
 }
 
-function TopVoicesCard({
-  authors,
-  narrators,
-  loading,
-}: {
-  authors: { name: string; seconds: number }[];
-  narrators: { name: string; seconds: number }[];
-  loading: boolean;
-}) {
-  return (
-    <div className="grid gap-4 sm:grid-cols-2">
-      <Card className="bg-surface p-4">
-        <h3 className="mb-3 font-medium">Top authors</h3>
-        {loading ? <Skeleton className="h-24 w-full" /> : <NameList items={authors} empty="No data yet" />}
-      </Card>
-      <Card className="bg-surface p-4">
-        <h3 className="mb-3 font-medium">Top narrators</h3>
-        {loading ? <Skeleton className="h-24 w-full" /> : <NameList items={narrators} empty="No data yet" />}
-      </Card>
-    </div>
-  );
-}
-
-function NameList({ items, empty }: { items: { name: string; seconds: number }[]; empty: string }) {
-  if (!items.length) return <p className="text-muted-foreground text-sm">{empty}</p>;
-  return (
-    <ol className="space-y-1">
-      {items.slice(0, 6).map((x, i) => (
-        <li key={x.name + i} className="flex justify-between text-sm">
-          <span className="truncate">{x.name}</span>
-          <span className="text-muted-foreground tabular-nums text-xs">{formatHM(x.seconds)}</span>
-        </li>
-      ))}
-    </ol>
-  );
-}
-
 // buildHeatmapCells slots the day list into a 13×7 grid keyed by
 // weekday so the first column starts on the correct day-of-week.
 // Missing dates appear as gaps; the input is already filtered to
 // non-zero days by the server.
-function buildHeatmapCells(days: HeatmapDay[]): (HeatmapDay | null)[][] {
-  const map = new Map<string, HeatmapDay>();
-  for (const d of days) map.set(d.date, d);
+//
+// Wire `day` from the server is an RFC-3339 timestamp truncated to
+// the day; we re-key on the YYYY-MM-DD prefix to match the grid
+// iteration's date math.
+function buildHeatmapCells(days: HeatmapDay[]): (HeatmapCell | null)[][] {
+  const map = new Map<string, HeatmapCell>();
+  for (const d of days) {
+    map.set(d.day.slice(0, 10), {
+      date: d.day.slice(0, 10),
+      seconds: d.seconds_played,
+    });
+  }
 
   const today = new Date();
-  const cells: (HeatmapDay | null)[][] = [];
+  const cells: (HeatmapCell | null)[][] = [];
   const start = new Date(today);
   start.setUTCDate(start.getUTCDate() - 89);
   // Snap to Sunday so columns are weeks.
@@ -387,7 +367,7 @@ function buildHeatmapCells(days: HeatmapDay[]): (HeatmapDay | null)[][] {
 
   const totalWeeks = 13 + (startDay > 0 ? 1 : 0);
   for (let w = 0; w < totalWeeks; w++) {
-    const week: (HeatmapDay | null)[] = [];
+    const week: (HeatmapCell | null)[] = [];
     for (let d = 0; d < 7; d++) {
       const cur = new Date(start);
       cur.setUTCDate(start.getUTCDate() + w * 7 + d);
@@ -395,7 +375,7 @@ function buildHeatmapCells(days: HeatmapDay[]): (HeatmapDay | null)[][] {
       if (cur > today) {
         week.push(null);
       } else {
-        week.push(map.get(key) ?? { date: key, sessions: 0, seconds: 0 });
+        week.push(map.get(key) ?? { date: key, seconds: 0 });
       }
     }
     cells.push(week);

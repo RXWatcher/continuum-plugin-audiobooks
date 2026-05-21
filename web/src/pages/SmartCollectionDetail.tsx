@@ -18,7 +18,7 @@ import {
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import type {
-  AudiobookSummary,
+  ABSLibraryItem,
   SmartCollectionGroup,
   SmartCollectionQuery,
   SmartCollectionRule,
@@ -282,19 +282,19 @@ export default function SmartCollectionDetail() {
             </div>
             {preview.isLoading ? (
               <Skeleton className="h-32 w-full" />
-            ) : (preview.data?.items ?? []).length === 0 ? (
+            ) : (preview.data?.results ?? []).length === 0 ? (
               <p className="text-muted-foreground text-sm">No matches yet.</p>
             ) : (
               <div className="space-y-2">
-                {preview.data!.items.slice(0, 12).map((book: AudiobookSummary) => (
+                {preview.data!.results.slice(0, 12).map((item: ABSLibraryItem) => (
                   <div
-                    key={book.id}
+                    key={item.id}
                     className="hover:bg-surface-hover flex items-center gap-3 rounded-md p-2 text-sm"
                   >
                     <div className="bg-muted size-10 shrink-0 overflow-hidden rounded">
-                      {book.cover_url && (
+                      {item.media?.coverPath && (
                         <img
-                          src={book.cover_url}
+                          src={item.media.coverPath}
                           alt=""
                           loading="lazy"
                           className="size-full object-cover"
@@ -302,9 +302,13 @@ export default function SmartCollectionDetail() {
                       )}
                     </div>
                     <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium">{book.title}</div>
+                      <div className="truncate font-medium">
+                        {item.media?.metadata?.title ?? item.id}
+                      </div>
                       <div className="text-muted-foreground truncate text-xs">
-                        {(book.authors ?? []).join(', ')}
+                        {(item.media?.metadata?.authors ?? [])
+                          .map((a) => a.name)
+                          .join(', ')}
                       </div>
                     </div>
                   </div>

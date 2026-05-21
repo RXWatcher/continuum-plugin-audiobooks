@@ -52,6 +52,7 @@ export default function CustomMetadataProvidersTab() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-custom-metadata-providers'] });
     },
+    onError: (err) => toast.error(`Remove failed: ${err}`),
   });
 
   const toggle = useMutation({
@@ -60,6 +61,7 @@ export default function CustomMetadataProvidersTab() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['admin-custom-metadata-providers'] });
     },
+    onError: (err) => toast.error(`Toggle failed: ${err}`),
   });
 
   return (

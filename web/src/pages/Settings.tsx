@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Bell, Copy, Link2, Sparkles, Trash2 } from 'lucide-react';
 import { api } from '@/api/client';
+import { mountPath } from '@/lib/mountPath';
 import { AtmosphereToggle, useAtmosphereEnabled } from '@/components/AtmosphereOverlay';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
@@ -118,7 +119,10 @@ function ShareLinkRow({
   link: ShareLink;
   onDelete: () => void;
 }) {
-  const url = `${window.location.origin}/share/${link.slug}`;
+  // Share URL must include the plugin mount prefix (the public
+  // /share/{slug} route is mounted at the plugin's root, which is
+  // /api/v1/plugins/{installId}/ when served via host proxy).
+  const url = `${window.location.origin}${mountPath()}/share/${link.slug}`;
   const expiresInDays = link.expires_at
     ? Math.max(
         0,

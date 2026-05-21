@@ -15,15 +15,15 @@ import (
 // with no restriction row matches every item. Admin writes one row
 // per restricted user; everyone else has no row and passes through.
 type ContentRestriction struct {
-	UserID           string
-	BlockedGenres    []string
-	BlockedTags      []string
-	BlockedAuthors   []string
-	BlockedNarrators []string
-	BlockedLibraries []int64
-	ExplicitBlocked  bool
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	UserID           string    `json:"user_id"`
+	BlockedGenres    []string  `json:"blocked_genres"`
+	BlockedTags      []string  `json:"blocked_tags"`
+	BlockedAuthors   []string  `json:"blocked_authors"`
+	BlockedNarrators []string  `json:"blocked_narrators"`
+	BlockedLibraries []int64   `json:"blocked_libraries"`
+	ExplicitBlocked  bool      `json:"explicit_blocked"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 // GetContentRestriction returns the user's restriction row.

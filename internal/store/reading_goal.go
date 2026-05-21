@@ -10,12 +10,12 @@ import (
 // ReadingGoal is one row in reading_goal — a user's target for a
 // given year and kind. Progress is derived read-side; not stored.
 type ReadingGoal struct {
-	UserID    string
-	Year      int
-	Kind      string // "books" | "hours"
-	Target    int
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	UserID    string    `json:"user_id"`
+	Year      int       `json:"year"`
+	Kind      string    `json:"kind"` // "books" | "hours"
+	Target    int       `json:"target"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 func (s *Store) UpsertReadingGoal(ctx context.Context, g ReadingGoal) error {

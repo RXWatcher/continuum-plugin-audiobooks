@@ -175,14 +175,16 @@ export interface ShareLink {
 }
 
 // Content restrictions — admin sets per-user allow/deny rules.
+// Field names mirror the server's wire shape exactly so the SPA
+// types can round-trip through JSON without remapping.
 export interface ContentRestriction {
   user_id: string;
-  library_ids?: number[];
+  blocked_libraries?: number[];
   blocked_genres?: string[];
   blocked_tags?: string[];
   blocked_authors?: string[];
   blocked_narrators?: string[];
-  block_explicit?: boolean;
+  explicit_blocked?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -209,6 +211,28 @@ export interface NotificationPref {
   updated_at?: string;
 }
 
+// ABSLibraryItem is the narrow ABS-shaped item that smart-collection
+// /items returns. Mobile apps consume the same wire shape; the SPA
+// flattens to read title / authors / cover.
+export interface ABSLibraryItem {
+  id: string;
+  libraryId?: string;
+  mediaType?: string;
+  media?: {
+    duration?: number;
+    coverPath?: string;
+    metadata?: {
+      title?: string;
+      authors?: { id: string; name: string }[];
+      series?: { id: string; name: string }[];
+      narrators?: string[];
+      publishedYear?: string;
+    };
+  };
+  addedAt?: number;
+  updatedAt?: number;
+}
+
 // Reading goals — per (year, kind) target. kind: "books" | "hours".
 export interface ReadingGoal {
   user_id: string;
@@ -230,35 +254,34 @@ export interface GoalProgress {
   days_in_year: number;
 }
 
-// Heatmap response — daily session counts + listening hours.
+// Heatmap response — one row per active day (zero-session days
+// omitted server-side; SPA fills gaps when laying out the grid).
 export interface HeatmapDay {
-  date: string;
-  sessions: number;
-  seconds: number;
+  day: string; // YYYY-MM-DDTHH:MM:SSZ — day-truncated timestamp
+  seconds_played: number;
+  session_count: number;
 }
 
 export interface HeatmapResponse {
   days: HeatmapDay[];
 }
 
-// Year-in-review aggregate.
+// Year-in-review aggregate. Wire shape matches store.YearStats.
+// TotalSeconds converts to hours client-side.
 export interface YearTopBook {
   book_id: string;
-  title?: string;
-  authors?: string[];
-  seconds_listened: number;
-  is_finished?: boolean;
+  seconds_played: number;
+  session_count: number;
 }
 
 export interface YearStats {
   year: number;
-  total_hours: number;
-  books_finished: number;
+  total_seconds: number;
+  session_count: number;
+  distinct_books: number;
   distinct_days: number;
+  longest_session_seconds: number;
   top_books: YearTopBook[];
-  top_authors?: { name: string; seconds: number }[];
-  top_narrators?: { name: string; seconds: number }[];
-  longest_session_seconds?: number;
 }
 
 export interface SmartCollection {

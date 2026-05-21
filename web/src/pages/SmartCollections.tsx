@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link } from 'react-router';
+import { Link, useNavigate } from 'react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { Plus, Sparkles, Trash2 } from 'lucide-react';
@@ -24,6 +24,7 @@ const emptyQuery: SmartCollectionQuery = {
 
 export default function SmartCollections() {
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const collections = useQuery({
     queryKey: ['smart-collections'],
     queryFn: () => api.listSmartCollections(),
@@ -37,10 +38,7 @@ export default function SmartCollections() {
       }),
     onSuccess: (created) => {
       qc.invalidateQueries({ queryKey: ['smart-collections'] });
-      // Soft-navigate by setting window.location — the SPA router
-      // picks it up. Cleaner than threading a navigate() through
-      // every mutation handler.
-      window.location.hash = `#/smart-collections/${created.id}`;
+      navigate(`/smart-collections/${encodeURIComponent(created.id)}`);
     },
     onError: (err) => toast.error(`Create failed: ${err}`),
   });
