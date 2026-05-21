@@ -82,6 +82,7 @@ func (s *Server) Handler() http.Handler {
 		s.mountReadingGoalRoutes(r)
 		s.mountShareLinkRoutes(r)
 		s.mountSyncRoutes(r)
+		s.mountExportRoutes(r)
 		s.mountStreamRoutes(r)
 	})
 	// Public share resolution — outside the auth group.
