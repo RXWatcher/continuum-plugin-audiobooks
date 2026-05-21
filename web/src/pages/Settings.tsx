@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
-import { Bell, Copy, Link2, Trash2 } from 'lucide-react';
+import { Bell, Copy, Link2, Sparkles, Trash2 } from 'lucide-react';
 import { api } from '@/api/client';
+import { AtmosphereToggle, useAtmosphereEnabled } from '@/components/AtmosphereOverlay';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -36,9 +37,36 @@ export default function Settings() {
           Manage notification preferences and other personal settings.
         </p>
       </header>
+      <DisplayPreferencesCard />
       <ShareLinksCard />
       <NotificationPrefsCard />
     </div>
+  );
+}
+
+// DisplayPreferencesCard houses opinions about how the UI looks +
+// feels. Today: atmosphere mode toggle (animated gradient based on
+// the currently-playing cover). Future: theme override, density,
+// reduced-motion override.
+function DisplayPreferencesCard() {
+  const [atmosphereEnabled] = useAtmosphereEnabled();
+  return (
+    <Card className="bg-surface p-4">
+      <div className="mb-4 flex items-center gap-2">
+        <Sparkles className="size-5" />
+        <h3 className="font-medium">Display</h3>
+      </div>
+      <div className="bg-background flex items-center justify-between rounded-md border border-dashed p-3">
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-medium">Atmosphere mode</div>
+          <div className="text-muted-foreground text-xs">
+            Animated cover-tinted gradient behind the now-playing screen.
+            Currently {atmosphereEnabled ? 'on' : 'off'}.
+          </div>
+        </div>
+        <AtmosphereToggle />
+      </div>
+    </Card>
   );
 }
 
