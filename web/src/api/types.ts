@@ -146,6 +146,58 @@ export interface SmartCollectionQuery {
   limit?: number;
 }
 
+// Reading goals — per (year, kind) target. kind: "books" | "hours".
+export interface ReadingGoal {
+  user_id: string;
+  year: number;
+  kind: 'books' | 'hours' | string;
+  target: number;
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface GoalProgress {
+  year: number;
+  kind: string;
+  target: number;
+  actual: number;
+  percent_complete: number;
+  on_pace_for_target: boolean;
+  days_into_year: number;
+  days_in_year: number;
+}
+
+// Heatmap response — daily session counts + listening hours.
+export interface HeatmapDay {
+  date: string;
+  sessions: number;
+  seconds: number;
+}
+
+export interface HeatmapResponse {
+  days: HeatmapDay[];
+}
+
+// Year-in-review aggregate.
+export interface YearTopBook {
+  book_id: string;
+  title?: string;
+  authors?: string[];
+  seconds_listened: number;
+  is_finished?: boolean;
+}
+
+export interface YearStats {
+  year: number;
+  total_hours: number;
+  books_finished: number;
+  distinct_days: number;
+  top_books: YearTopBook[];
+  top_authors?: { name: string; seconds: number }[];
+  top_narrators?: { name: string; seconds: number }[];
+  longest_session_seconds?: number;
+}
+
 export interface SmartCollection {
   id: string;
   userId: string;

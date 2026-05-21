@@ -21,11 +21,15 @@ import type {
   Podcast,
   PodcastEpisode,
   Progress,
+  GoalProgress,
+  HeatmapResponse,
   Rating,
+  ReadingGoal,
   SeriesSummary,
   SmartCollection,
   SmartCollectionQuery,
   UserRequest,
+  YearStats,
 } from './types';
 
 function apiBase(): string {
@@ -430,6 +434,36 @@ export const api = {
     authedFetch(`${absApiBase()}/me/smart-collections/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     }).then(noContentOrThrow),
+
+  // Stats — streak + goals + heatmap + year-in-review.
+  getStreak: () =>
+    authedFetch(`${apiBase()}/me/streak`).then(
+      jsonOrThrow<{ current: number; longest: number; last_active_at?: number }>,
+    ),
+  listGoals: (year?: number) =>
+    authedFetch(`${apiBase()}/me/goals${year ? `?year=${year}` : ''}`).then(
+      jsonOrThrow<{ items: ReadingGoal[] }>,
+    ),
+  getGoalProgress: (year?: number) =>
+    authedFetch(`${apiBase()}/me/goals/progress${year ? `?year=${year}` : ''}`).then(
+      jsonOrThrow<{ year: number; goals: GoalProgress[] }>,
+    ),
+  putGoal: (year: number, kind: string, target: number) =>
+    authedFetch(`${apiBase()}/me/goals/${year}/${encodeURIComponent(kind)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target }),
+    }).then(jsonOrThrow<ReadingGoal>),
+  deleteGoal: (year: number, kind: string) =>
+    authedFetch(`${apiBase()}/me/goals/${year}/${encodeURIComponent(kind)}`, {
+      method: 'DELETE',
+    }).then(noContentOrThrow),
+  getHeatmap: (days = 90) =>
+    authedFetch(`${apiBase()}/me/heatmap?days=${days}`).then(
+      jsonOrThrow<HeatmapResponse>,
+    ),
+  getYearStats: (year: number) =>
+    authedFetch(`${apiBase()}/me/stats/year/${year}`).then(jsonOrThrow<YearStats>),
 
   // Podcasts — read endpoints (authenticated user).
   listPodcasts: (libraryID?: number) => {
