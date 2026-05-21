@@ -45,7 +45,8 @@
       "type": "scheduled_task.v1",
       "id": "portal_library_sync",
       "display_name": "Sync presentation libraries from backend",
-      "cron": "0 * * * *"
+      "cron": "0 * * * *",
+      "description": "Mirrors backend libraries (audiobooks, podcasts, share buckets) into the portal presentation DB on a schedule."
     },
     {
       "type": "scheduled_task.v1",
