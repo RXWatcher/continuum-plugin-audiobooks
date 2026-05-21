@@ -97,6 +97,7 @@ func main() {
 	// Podcast feed refresher — process-scoped so its HTTP client is
 	// reused across scheduler ticks and the admin force-refresh path.
 	podcastRefresher := podcastfeed.New(hclogAdapter{logger})
+	// Broadcaster is wired inside Configure once absHub exists.
 
 	// Embedding-based recommender. Reads its config from the env;
 	// when EMBEDDING_BASE_URL / EMBEDDING_MODEL aren't set, the
@@ -135,6 +136,12 @@ func main() {
 		socketOpts,
 	)
 	httpSrv.SetSocketHandler(absHub.Handler())
+
+	// Wire the broadcaster into the podcast refresher now that the
+	// hub exists. The refresher emits episode_download_finished on
+	// each completed feed refresh, so connected ABS clients get a
+	// shelf-refresh hint without polling.
+	podcastRefresher.SetBroadcaster(absHub)
 
 	rt := pluginrt.New(manifest, func(cfg pluginrt.Config) error {
 		ctx := context.Background()
@@ -226,13 +233,14 @@ func main() {
 
 		srv := server.New(server.Deps{
 			PodcastFeed: podcastRefresher,
-			Store:      st,
-			Backend:    bkClient,
-			Events:     ev,
-			Streaming:  streamRouter,
-			ABS:        absHandler,
-			SPA:        web.SPAHandler(),
-			HostBaseFn: func() string { return hostBase },
+			Store:       st,
+			Backend:     bkClient,
+			Events:      ev,
+			Streaming:   streamRouter,
+			ABS:         absHandler,
+			SPA:         web.SPAHandler(),
+			HostBaseFn:  func() string { return hostBase },
+			Broadcaster: absHub,
 		})
 		httpSrv.SetHandler(srv.Handler())
 

@@ -118,8 +118,11 @@ func TestConsumer_AudiobookImported_BroadcastsItemAdded(t *testing.T) {
 	}
 
 	events, payloads := bc.snapshot()
-	if len(events) != 1 || events[0] != "item_added" {
-		t.Fatalf("events = %+v, want exactly one item_added", events)
+	// Real ABS clients listen for both the singular item_added and
+	// the plural items_added (the SPA's shelf-refresh handler binds
+	// to the plural name). Consumer emits both for the same import.
+	if len(events) != 2 || events[0] != "item_added" || events[1] != "items_added" {
+		t.Fatalf("events = %+v, want item_added followed by items_added", events)
 	}
 	p, ok := payloads[0].(map[string]any)
 	if !ok {

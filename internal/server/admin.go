@@ -178,6 +178,16 @@ func (s *Server) handleAdminReplaceLibraries(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	// Broadcast library_updated so connected ABS clients pick up the
+	// new library layout immediately (the SPA polls /libraries
+	// independently; the mobile app waits for this event before
+	// re-fetching). Singular event covers the common "admin edited
+	// the library list" case.
+	if s.d.Broadcaster != nil {
+		s.d.Broadcaster.Broadcast("library_updated", map[string]any{
+			"count": len(body.Items),
+		})
+	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
 }
 

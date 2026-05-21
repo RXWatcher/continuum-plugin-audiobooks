@@ -187,6 +187,12 @@ func (h *Handler) handleImported(ctx context.Context, d *Deps, p map[string]any)
 			payload["coverPath"] = cover
 		}
 		d.Broadcast.Broadcast("item_added", payload)
+		// Real ABS also emits a plural items_added on scan-complete.
+		// We don't have batched scan boundaries — each imported event
+		// arrives independently — but emitting items_added with a
+		// singleton batch lets web/mobile clients that bind their
+		// shelf-refresh handler to the plural name catch up too.
+		d.Broadcast.Broadcast("items_added", []any{payload})
 	}
 }
 

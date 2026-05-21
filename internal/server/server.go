@@ -31,6 +31,16 @@ type Deps struct {
 	SPA         http.Handler
 	HostBaseFn  func() string
 	PodcastFeed *podcastfeed.Refresher
+	// Broadcaster lets admin mutations push library_* / item_* / etc.
+	// realtime events to connected ABS clients without polling. nil
+	// is OK — the handlers short-circuit.
+	Broadcaster Broadcaster
+}
+
+// Broadcaster is the narrow surface admin handlers use to push
+// realtime events. Same shape the abssocket hub exposes.
+type Broadcaster interface {
+	Broadcast(event string, payload any)
 }
 
 // Server wraps the chi handler with the configured deps.

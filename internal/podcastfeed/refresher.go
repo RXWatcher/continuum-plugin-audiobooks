@@ -39,9 +39,24 @@ type Store interface {
 // the scheduler and another can be created on demand by the admin force-
 // refresh endpoint — both share the same HTTP client + parser.
 type Refresher struct {
-	hc     *http.Client
-	parser *gofeed.Parser
-	logger Logger
+	hc          *http.Client
+	parser      *gofeed.Parser
+	logger      Logger
+	broadcaster Broadcaster
+}
+
+// Broadcaster is the narrow surface for emitting episode_download_*
+// events. Optional — set via SetBroadcaster after construction so
+// existing callers that don't care about realtime events stay
+// zero-config.
+type Broadcaster interface {
+	Broadcast(event string, payload any)
+}
+
+// SetBroadcaster wires the realtime emitter. Safe to call once at
+// process boot; not safe to call concurrently with RefreshOne.
+func (r *Refresher) SetBroadcaster(b Broadcaster) {
+	r.broadcaster = b
 }
 
 // Logger is the narrow logging surface — slog and hclog both satisfy it.
@@ -125,6 +140,17 @@ func (r *Refresher) RefreshOne(ctx context.Context, s Store, p store.Podcast) er
 	}
 	_ = s.MarkPodcastRefreshed(ctx, p.ID, "")
 	r.logger.Debug("podcast refreshed", "podcast_id", p.ID, "episodes", count)
+	// Realtime: emit episode_download_finished when any episodes
+	// were inserted so connected clients refresh the podcast's
+	// episode list without polling. We don't have per-episode
+	// granular events (the refresher walks the whole feed in one
+	// pass) — the singular event is the batch signal.
+	if r.broadcaster != nil && count > 0 {
+		r.broadcaster.Broadcast("episode_download_finished", map[string]any{
+			"podcastId": p.ID,
+			"count":     count,
+		})
+	}
 	return nil
 }
 
