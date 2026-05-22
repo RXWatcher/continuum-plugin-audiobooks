@@ -11,20 +11,20 @@ import (
 	"github.com/jackc/pgx/v5"
 )
 
-// StandaloneLoginMode controls the standalone-port `/abs/api/login` body-creds
-// fallback. See docs/2026-05-21-standalone-abs-login.md.
+// StandaloneLoginMode is the operator on/off switch for the standalone-port
+// /abs/api/login body-creds path.
 const (
-	StandaloneLoginModeDisabled    = "disabled"
-	StandaloneLoginModeOptIn       = "opt_in"
-	StandaloneLoginModeAllAccounts = "all_accounts"
+	StandaloneLoginModeDisabled = "disabled"
+	StandaloneLoginModeEnabled  = "enabled"
 )
 
-// NormalizeStandaloneLoginMode coerces unknown / empty values to "disabled" so
-// the handler never has to special-case migration-era rows.
+// NormalizeStandaloneLoginMode coerces any truthy legacy value
+// (enabled / opt_in / all_accounts) to "enabled", everything else to
+// "disabled". opt_in / all_accounts are pre-profile legacy values.
 func NormalizeStandaloneLoginMode(v string) string {
 	switch v {
-	case StandaloneLoginModeOptIn, StandaloneLoginModeAllAccounts:
-		return v
+	case StandaloneLoginModeEnabled, "opt_in", "all_accounts":
+		return StandaloneLoginModeEnabled
 	default:
 		return StandaloneLoginModeDisabled
 	}
@@ -213,9 +213,18 @@ func (s *Store) ImportLegacyBackendConfig(ctx context.Context, legacy LegacyBack
 
 func defaultBackendConfigShape() BackendConfig {
 	return BackendConfig{
-		ABSAccessTTLHours:    24,
-		ABSRefreshTTLDays:    30,
-		StandaloneHTTPListen: "127.0.0.1:9998",
+		ABSAccessTTLHours: 24,
+		ABSRefreshTTLDays: 30,
+		// Bind 0.0.0.0, not 127.0.0.1. The plugin runs as a subprocess inside
+		// the continuum container, which publishes 9998-9999. Docker forwards
+		// the published port to the container's eth0 interface via DNAT — a
+		// listener on 127.0.0.1 is reachable only from inside the container,
+		// so a loopback bind makes the published port dead and ABS clients
+		// get connection-refused before they ever reach /status or /login.
+		// Standalone /login stays gated by StandaloneLoginMode, so binding
+		// 0.0.0.0 by default exposes only /status + /ping until an admin
+		// opts a login mode in.
+		StandaloneHTTPListen: "0.0.0.0:9998",
 		StandaloneLoginMode:  StandaloneLoginModeDisabled,
 	}
 }
