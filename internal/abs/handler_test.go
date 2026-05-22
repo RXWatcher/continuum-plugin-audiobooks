@@ -209,3 +209,23 @@ func TestHandleLogout_RevokesToken(t *testing.T) {
 		t.Errorf("post-logout status = %d, want 401", s)
 	}
 }
+
+func TestHandleStatusIdentifiesAsAudiobookshelf(t *testing.T) {
+	f := newAuthFixture(t)
+	status, body := f.do("GET", "/status", nil, "")
+	if status != 200 {
+		t.Fatalf("status = %d, want 200", status)
+	}
+
+	var respBody map[string]any
+	if err := json.Unmarshal([]byte(body), &respBody); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if respBody["app"] != "audiobookshelf" {
+		t.Errorf("app = %v, want audiobookshelf", respBody["app"])
+	}
+	methods, ok := respBody["authMethods"].([]any)
+	if !ok || len(methods) != 1 || methods[0] != "local" {
+		t.Errorf("authMethods = %v, want [local]", respBody["authMethods"])
+	}
+}

@@ -463,7 +463,8 @@ func (h *Handler) handleStatus(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"isInit":        true,
 		"language":      "en-us",
-		"app":           ServerSourceTag,
+		"app":           "audiobookshelf",
+		"authMethods":   []string{"local"},
 		"serverVersion": ServerVersion,
 	})
 }
