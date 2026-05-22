@@ -210,6 +210,22 @@ func TestHandleLogout_RevokesToken(t *testing.T) {
 	}
 }
 
+func TestHandlePingReturnsSuccess(t *testing.T) {
+	f := newAuthFixture(t)
+	status, body := f.do("GET", "/ping", nil, "")
+	if status != 200 {
+		t.Fatalf("status = %d, want 200", status)
+	}
+
+	var respBody map[string]any
+	if err := json.Unmarshal([]byte(body), &respBody); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if respBody["success"] != true {
+		t.Errorf("success = %v, want true", respBody["success"])
+	}
+}
+
 func TestHandleStatusIdentifiesAsAudiobookshelf(t *testing.T) {
 	f := newAuthFixture(t)
 	status, body := f.do("GET", "/status", nil, "")

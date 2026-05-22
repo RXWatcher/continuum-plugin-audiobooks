@@ -449,6 +449,7 @@ func withPortalLibraryDetail(d backend.AudiobookDetail, lib store.PortalLibrary)
 
 func (h *Handler) handlePing(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
+		"success": true,
 		"server":  ServerSourceTag,
 		"version": ServerVersion,
 		"pong":    true,
