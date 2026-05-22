@@ -42,7 +42,7 @@ func (s *Store) BookActivity(ctx context.Context, userID, profileID, bookID stri
 	}
 
 	// Bookmarks — one event per row, kind="bookmark".
-	if bms, err := s.ListBookmarks(ctx, userID, bookID); err == nil {
+	if bms, err := s.ListBookmarks(ctx, userID, profileID, bookID); err == nil {
 		for _, b := range bms {
 			out = append(out, ActivityEvent{
 				At:   b.CreatedAt,
