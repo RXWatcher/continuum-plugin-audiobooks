@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { _resetForTest, captureFromURL } from '@/lib/auth';
-import { api } from './client';
+import { api, authHeaders } from './client';
 
 describe('api.adminSyncLibraries', () => {
   beforeEach(() => {
@@ -258,5 +258,16 @@ describe('fetchInstalledBackends', () => {
         audiobook_roles: ['library_source'],
       }),
     ]);
+  });
+});
+
+describe('authHeaders', () => {
+  beforeEach(() => sessionStorage.clear());
+  it('includes X-Profile-Id when a profile is active', () => {
+    sessionStorage.setItem('continuum.profileId', 'kids');
+    expect(authHeaders()['X-Profile-Id']).toBe('kids');
+  });
+  it('omits X-Profile-Id for the primary profile', () => {
+    expect(authHeaders()['X-Profile-Id']).toBeUndefined();
   });
 });

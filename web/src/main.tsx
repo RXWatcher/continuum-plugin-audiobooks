@@ -6,6 +6,7 @@ import App from './App';
 import './index.css';
 import { mountPath } from './lib/mountPath';
 import { captureFromURL, getCachedTheme } from './lib/auth';
+import { captureProfileFromURL } from './lib/profile';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -19,6 +20,7 @@ const queryClient = new QueryClient({
 
 const params = new URLSearchParams(window.location.search);
 captureFromURL(params);
+captureProfileFromURL();
 
 // Strip ?token= from the URL so it doesn't show in history.
 if (params.has('token')) {

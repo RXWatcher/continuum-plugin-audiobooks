@@ -1,5 +1,6 @@
 import { mountPath } from '@/lib/mountPath';
 import { getCachedToken, setCachedToken } from '@/lib/auth';
+import { currentProfileId } from '@/lib/profile';
 import type {
   ABSLibraryItem,
   ABSSession,
@@ -49,9 +50,13 @@ function absApiBase(): string {
   return `${mountPath()}/api`;
 }
 
-function authHeaders(): Record<string, string> {
+export function authHeaders(): Record<string, string> {
+  const h: Record<string, string> = {};
   const t = getCachedToken();
-  return t ? { Authorization: `Bearer ${t}` } : {};
+  if (t) h.Authorization = `Bearer ${t}`;
+  const p = currentProfileId();
+  if (p) h['X-Profile-Id'] = p;
+  return h;
 }
 
 let refreshPromise: Promise<string | null> | null = null;
@@ -132,6 +137,7 @@ export async function authedFetch(input: string, init?: RequestInit): Promise<Re
     headers: {
       ...(init?.headers as Record<string, string> | undefined),
       Authorization: `Bearer ${freshToken}`,
+      ...(currentProfileId() ? { 'X-Profile-Id': currentProfileId() } : {}),
     },
     credentials: init?.credentials ?? 'include',
   });
