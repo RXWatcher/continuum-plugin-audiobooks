@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"errors"
+	"io"
 	"net/http"
+	neturl "net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -16,6 +18,7 @@ import (
 
 	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/backend"
 	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/bookref"
+	mediatoken "github.com/RXWatcher/continuum-plugin-audiobooks/internal/mediatoken"
 	"github.com/RXWatcher/continuum-plugin-audiobooks/internal/store"
 )
 
@@ -47,6 +50,91 @@ func (h *Handler) mountRSSFeedRoutes(prefix string, r chi.Router) {
 func (h *Handler) MountPublicFeed(r chi.Router) {
 	r.Get("/feed/{slug}.xml", h.handlePublicFeed)
 	r.Get("/feed/{slug}", h.handlePublicFeed)
+	r.Get("/feed/{slug}/track/{idx}", h.handlePublicFeedTrack)
+}
+
+// handlePublicFeedTrack serves the audio enclosure for an RSS feed
+// episode. The feed slug is the capability — no Bearer token (podcast
+// apps don't speak custom auth). It mirrors handlePublicTrack's
+// byte-proxy: mint a short-lived media token, proxy the backend stream
+// so the URL stays on the listener the subscriber is talking to.
+func (h *Handler) handlePublicFeedTrack(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	idxRaw := chi.URLParam(r, "idx")
+	// The enclosure URL carries a file extension (e.g. "0.mp3"); strip it.
+	if dot := strings.IndexByte(idxRaw, '.'); dot >= 0 {
+		idxRaw = idxRaw[:dot]
+	}
+	idx, err := strconv.Atoi(idxRaw)
+	if err != nil || idx < 0 {
+		http.Error(w, "idx must be a non-negative int", http.StatusBadRequest)
+		return
+	}
+
+	feed, err := h.store.GetRSSFeedBySlug(r.Context(), slug)
+	if errors.Is(err, store.ErrNotFound) {
+		http.Error(w, "feed not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if feed.EntityType != "item" {
+		http.Error(w, "track enclosures are only served for item feeds", http.StatusNotFound)
+		return
+	}
+	lib, backendBookID, _, err := h.portalLibraryForBookRef(r.Context(), feed.EntityID)
+	if err != nil || lib.BackendPluginID == "" {
+		http.Error(w, "no backend configured", http.StatusPreconditionFailed)
+		return
+	}
+
+	_, cfg, err := h.targetFn(r.Context())
+	if err != nil {
+		http.Error(w, "config unavailable", http.StatusInternalServerError)
+		return
+	}
+	if cfg.MediaSigningSecret == "" {
+		http.Error(w, "media signing not configured", http.StatusServiceUnavailable)
+		return
+	}
+	mediaTok, err := mediatoken.Mint(cfg.MediaSigningSecret, feed.UserID, backendBookID, idx)
+	if err != nil {
+		http.Error(w, "mint media token", http.StatusInternalServerError)
+		return
+	}
+	backendPath := "/api/v1/stream/" + neturl.PathEscape(backendBookID) + "/" + strconv.Itoa(idx) +
+		"?token=" + neturl.QueryEscape(mediaTok)
+
+	hdrs := map[string]string{}
+	for _, name := range []string{"Range", "If-Match", "If-None-Match", "If-Modified-Since"} {
+		if v := r.Header.Get(name); v != "" {
+			hdrs[name] = v
+		}
+	}
+
+	resp, err := h.backend.HostClient().GetStream(r.Context(), "", lib.BackendPluginID, backendPath, hdrs)
+	if err != nil {
+		h.logger.Warn("abs feed track proxy: upstream error",
+			"slug", slug, "book_id", backendBookID, "file_idx", idx, "err", err.Error())
+		http.Error(w, "stream unavailable", http.StatusBadGateway)
+		return
+	}
+	defer resp.Body.Close()
+	for _, name := range []string{
+		"Content-Type", "Content-Length", "Content-Range", "Accept-Ranges",
+		"ETag", "Last-Modified", "Cache-Control",
+	} {
+		if v := resp.Header.Get(name); v != "" {
+			w.Header().Set(name, v)
+		}
+	}
+	w.WriteHeader(resp.StatusCode)
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		h.logger.Debug("abs feed track proxy: copy ended",
+			"slug", slug, "file_idx", idx, "err", err.Error())
+	}
 }
 
 func (h *Handler) handleListRSSFeeds(w http.ResponseWriter, r *http.Request) {
