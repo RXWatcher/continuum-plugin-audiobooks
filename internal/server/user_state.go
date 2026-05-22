@@ -43,7 +43,7 @@ func (s *Server) handleListMyProgress(w http.ResponseWriter, r *http.Request) {
 			limit = n
 		}
 	}
-	out, err := s.d.Store.ListRecentProgress(r.Context(), id.UserID, limit)
+	out, err := s.d.Store.ListRecentProgress(r.Context(), id.UserID, profileID(r), limit)
 	if err != nil {
 		writeInternal(w, r, err)
 		return
@@ -119,7 +119,7 @@ func (s *Server) handleListMyPlaybackSessions(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	sessions, err := s.d.Store.ListActiveABSSessionsForUser(r.Context(), id.UserID, 100)
+	sessions, err := s.d.Store.ListActiveABSSessionsForUser(r.Context(), id.UserID, profileID(r), 100)
 	if err != nil {
 		writeInternal(w, r, err)
 		return
@@ -252,11 +252,11 @@ func (s *Server) syncPlaybackProgress(r *http.Request, userID, bookID string, cu
 		}
 	}
 	if p.Duration == nil && p.ProgressPct == nil && p.IsFinished == nil {
-		return s.d.Store.UpdateProgressPosition(r.Context(), userID, bookID, current)
+		return s.d.Store.UpdateProgressPosition(r.Context(), userID, profileID(r), bookID, current)
 	}
 	progressPct := float32(0)
 	isFinished := false
-	cur, err := s.d.Store.GetProgress(r.Context(), userID, bookID)
+	cur, err := s.d.Store.GetProgress(r.Context(), userID, profileID(r), bookID)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		return err
 	}
@@ -291,7 +291,7 @@ func (s *Server) handleListBookmarks(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	bookID := chi.URLParam(r, "id")
-	out, err := s.d.Store.ListBookmarks(r.Context(), id.UserID, bookID)
+	out, err := s.d.Store.ListBookmarks(r.Context(), id.UserID, profileID(r), bookID)
 	if err != nil {
 		writeInternal(w, r, err)
 		return
@@ -308,7 +308,7 @@ func (s *Server) handleGetStreak(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	streak, err := s.d.Store.StreakForUser(r.Context(), id.UserID, time.UTC)
+	streak, err := s.d.Store.StreakForUser(r.Context(), id.UserID, profileID(r), time.UTC)
 	if err != nil {
 		writeInternal(w, r, err)
 		return
@@ -354,7 +354,7 @@ func (s *Server) handleDeleteBookmark(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	bmID := chi.URLParam(r, "bm_id")
-	if err := s.d.Store.DeleteBookmark(r.Context(), bmID, id.UserID); err != nil {
+	if err := s.d.Store.DeleteBookmark(r.Context(), bmID, id.UserID, profileID(r)); err != nil {
 		writeInternal(w, r, err)
 		return
 	}

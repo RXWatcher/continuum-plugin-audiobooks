@@ -161,7 +161,7 @@ func TestWebPlaybackSessionLifecycle(t *testing.T) {
 	if sess, err = st.GetABSSession(ctx, created.ID); err != nil || sess.CurrentTime != 42 {
 		t.Fatalf("session current time = %+v err=%v, want 42", sess, err)
 	}
-	p, err := st.GetProgress(ctx, "alice", "book1")
+	p, err := st.GetProgress(ctx, "alice", "", "book1")
 	if err != nil {
 		t.Fatalf("get progress: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestWebPlaybackSessionLifecycle(t *testing.T) {
 	if w.Code != http.StatusNoContent {
 		t.Fatalf("close session = %d body=%s, want 204", w.Code, w.Body)
 	}
-	p, err = st.GetProgress(ctx, "alice", "book1")
+	p, err = st.GetProgress(ctx, "alice", "", "book1")
 	if err != nil {
 		t.Fatalf("get progress after close: %v", err)
 	}
@@ -225,7 +225,7 @@ func TestWebPlaybackSessionPositionOnlySyncPreservesFinished(t *testing.T) {
 	if w.Code != http.StatusOK {
 		t.Fatalf("position-only sync = %d body=%s, want 200", w.Code, w.Body)
 	}
-	p, err := st.GetProgress(ctx, "alice", "book1")
+	p, err := st.GetProgress(ctx, "alice", "", "book1")
 	if err != nil {
 		t.Fatalf("get progress: %v", err)
 	}

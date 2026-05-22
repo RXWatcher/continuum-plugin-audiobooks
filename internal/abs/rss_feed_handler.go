@@ -94,7 +94,8 @@ func (h *Handler) handlePublicFeedTrack(w http.ResponseWriter, r *http.Request) 
 			return
 		}
 	case "collection":
-		items, err := h.store.ListCollectionItems(r.Context(), feed.EntityID, feed.UserID)
+		// TODO(profiles): RSS feeds are not profile-scoped
+		items, err := h.store.ListCollectionItems(r.Context(), feed.EntityID, feed.UserID, "")
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -383,7 +384,8 @@ func (h *Handler) itemFeedEpisodes(r *http.Request, encoded, scheme, host string
 // a collection feed gets a queue of audiobook samples, which is
 // the standard "follow my reading list" UX.
 func (h *Handler) collectionFeedEpisodes(r *http.Request, ownerID, collectionID, scheme, host, slug string) []rssItem {
-	items, err := h.store.ListCollectionItems(r.Context(), collectionID, ownerID)
+	// TODO(profiles): RSS feeds are not profile-scoped
+	items, err := h.store.ListCollectionItems(r.Context(), collectionID, ownerID, "")
 	if err != nil {
 		return nil
 	}

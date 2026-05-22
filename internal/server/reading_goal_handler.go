@@ -105,7 +105,7 @@ func (s *Server) handleGoalProgress(w http.ResponseWriter, r *http.Request) {
 			year = n
 		}
 	}
-	prog, err := s.d.Store.GoalProgressForUser(r.Context(), id.UserID, year, time.UTC)
+	prog, err := s.d.Store.GoalProgressForUser(r.Context(), id.UserID, profileID(r), year, time.UTC)
 	if err != nil {
 		writeInternal(w, r, err)
 		return

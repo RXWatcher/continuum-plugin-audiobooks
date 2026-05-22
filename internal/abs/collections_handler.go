@@ -39,7 +39,7 @@ func (h *Handler) mountCollectionsRoutes(prefix string, r chi.Router) {
 
 func (h *Handler) handleListCollections(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
-	rows, err := h.store.ListUserCollections(r.Context(), a.UserID)
+	rows, err := h.store.ListUserCollections(r.Context(), a.UserID, a.ProfileID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -121,7 +121,7 @@ func (h *Handler) handleUpdateCollection(w http.ResponseWriter, r *http.Request)
 	if body.Name != "" {
 		c.Name = body.Name
 	}
-	if err := h.store.UpdateCollection(r.Context(), c, a.UserID); err != nil {
+	if err := h.store.UpdateCollection(r.Context(), c, a.UserID, a.ProfileID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -130,7 +130,7 @@ func (h *Handler) handleUpdateCollection(w http.ResponseWriter, r *http.Request)
 
 func (h *Handler) handleDeleteCollection(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
-	if err := h.store.DeleteCollection(r.Context(), chi.URLParam(r, "id"), a.UserID); err != nil {
+	if err := h.store.DeleteCollection(r.Context(), chi.URLParam(r, "id"), a.UserID, a.ProfileID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -154,7 +154,7 @@ func (h *Handler) handleAddCollectionBook(w http.ResponseWriter, r *http.Request
 		http.Error(w, "not owned", http.StatusForbidden)
 		return
 	}
-	if err := h.store.AddCollectionItem(r.Context(), collID, encoded, a.UserID); err != nil {
+	if err := h.store.AddCollectionItem(r.Context(), collID, encoded, a.UserID, a.ProfileID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -178,7 +178,7 @@ func (h *Handler) handleRemoveCollectionBook(w http.ResponseWriter, r *http.Requ
 		http.Error(w, "not owned", http.StatusForbidden)
 		return
 	}
-	if err := h.store.RemoveCollectionItem(r.Context(), collID, encoded, a.UserID); err != nil {
+	if err := h.store.RemoveCollectionItem(r.Context(), collID, encoded, a.UserID, a.ProfileID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -189,6 +189,7 @@ func (h *Handler) handleRemoveCollectionBook(w http.ResponseWriter, r *http.Requ
 // shape. Pass items=true to include the books[] array; the list
 // view omits it for response-size reasons.
 func (h *Handler) collectionToABSMap(r *http.Request, userID string, c store.Collection, items bool) map[string]any {
+	a, _ := absAuthFrom(r)
 	out := map[string]any{
 		"id":          c.ID,
 		"userId":      c.UserID,
@@ -201,7 +202,7 @@ func (h *Handler) collectionToABSMap(r *http.Request, userID string, c store.Col
 	if !items {
 		return out
 	}
-	rows, err := h.store.ListCollectionItems(r.Context(), c.ID, userID)
+	rows, err := h.store.ListCollectionItems(r.Context(), c.ID, userID, a.ProfileID)
 	if err != nil {
 		out["books"] = []any{}
 		return out

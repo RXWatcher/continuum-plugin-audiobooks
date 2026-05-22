@@ -29,7 +29,7 @@ func (s *Server) handleListMyCollections(w http.ResponseWriter, r *http.Request)
 	if !ok {
 		return
 	}
-	out, err := s.d.Store.ListUserCollections(r.Context(), id.UserID)
+	out, err := s.d.Store.ListUserCollections(r.Context(), id.UserID, profileID(r))
 	if err != nil {
 		writeInternal(w, r, err)
 		return
@@ -101,7 +101,7 @@ func (s *Server) handleUpdateCollection(w http.ResponseWriter, r *http.Request) 
 		IsPublic:    p.IsPublic,
 		IsPinned:    p.IsPinned,
 		CoverBookID: p.CoverBookID,
-	}, id.UserID); err != nil {
+	}, id.UserID, profileID(r)); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "not found")
 			return
@@ -118,7 +118,7 @@ func (s *Server) handleDeleteCollection(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	collID := chi.URLParam(r, "id")
-	if err := s.d.Store.DeleteCollection(r.Context(), collID, id.UserID); err != nil {
+	if err := s.d.Store.DeleteCollection(r.Context(), collID, id.UserID, profileID(r)); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			writeError(w, http.StatusNotFound, "not found")
 			return
@@ -135,7 +135,7 @@ func (s *Server) handleListCollectionItems(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	collID := chi.URLParam(r, "id")
-	out, err := s.d.Store.ListCollectionItems(r.Context(), collID, id.UserID)
+	out, err := s.d.Store.ListCollectionItems(r.Context(), collID, id.UserID, profileID(r))
 	if err != nil {
 		writeInternal(w, r, err)
 		return
@@ -158,7 +158,7 @@ func (s *Server) handleAddCollectionItem(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusBadRequest, "book_id required")
 		return
 	}
-	if err := s.d.Store.AddCollectionItem(r.Context(), collID, p.BookID, id.UserID); err != nil {
+	if err := s.d.Store.AddCollectionItem(r.Context(), collID, p.BookID, id.UserID, profileID(r)); err != nil {
 		writeInternal(w, r, err)
 		return
 	}
@@ -172,7 +172,7 @@ func (s *Server) handleRemoveCollectionItem(w http.ResponseWriter, r *http.Reque
 	}
 	collID := chi.URLParam(r, "id")
 	bookID := chi.URLParam(r, "book_id")
-	if err := s.d.Store.RemoveCollectionItem(r.Context(), collID, bookID, id.UserID); err != nil {
+	if err := s.d.Store.RemoveCollectionItem(r.Context(), collID, bookID, id.UserID, profileID(r)); err != nil {
 		writeInternal(w, r, err)
 		return
 	}

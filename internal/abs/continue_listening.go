@@ -22,7 +22,7 @@ import (
 // mobile so over-fetching wastes the backend GetDetail loop below.
 func (h *Handler) handleItemsInProgress(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
-	rows, err := h.store.ListInProgress(r.Context(), a.UserID, 25)
+	rows, err := h.store.ListInProgress(r.Context(), a.UserID, a.ProfileID, 25)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -92,7 +92,7 @@ func (h *Handler) hydrateInProgressItem(ctx context.Context, bearer string, lib 
 func (h *Handler) handleHideFromContinue(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
 	itemID := chi.URLParam(r, "itemId")
-	if err := h.store.HideProgressFromContinue(r.Context(), a.UserID, itemID); err != nil {
+	if err := h.store.HideProgressFromContinue(r.Context(), a.UserID, a.ProfileID, itemID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -107,7 +107,7 @@ func (h *Handler) handleHideFromContinue(w http.ResponseWriter, r *http.Request)
 func (h *Handler) handleUnhideFromContinue(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
 	itemID := chi.URLParam(r, "itemId")
-	if err := h.store.UnhideProgressFromContinue(r.Context(), a.UserID, itemID); err != nil {
+	if err := h.store.UnhideProgressFromContinue(r.Context(), a.UserID, a.ProfileID, itemID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -127,7 +127,7 @@ func (h *Handler) handleDeleteProgress(w http.ResponseWriter, r *http.Request) {
 	// Confirm the progress exists so 404-vs-200 semantics match ABS:
 	// real ABS 404s when the row was already gone. Our store.Delete is
 	// idempotent (no error), so we explicitly check first.
-	if _, err := h.store.GetProgress(r.Context(), a.UserID, itemID); err != nil {
+	if _, err := h.store.GetProgress(r.Context(), a.UserID, a.ProfileID, itemID); err != nil {
 		if errors.Is(err, store.ErrNotFound) {
 			http.Error(w, "progress not found", http.StatusNotFound)
 			return
@@ -135,7 +135,7 @@ func (h *Handler) handleDeleteProgress(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if err := h.store.DeleteProgress(r.Context(), a.UserID, itemID); err != nil {
+	if err := h.store.DeleteProgress(r.Context(), a.UserID, a.ProfileID, itemID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

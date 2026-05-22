@@ -46,7 +46,7 @@ type playlistItemRef struct {
 
 func (h *Handler) handleListPlaylists(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
-	rows, err := h.store.ListUserPlaylists(r.Context(), a.UserID)
+	rows, err := h.store.ListUserPlaylists(r.Context(), a.UserID, a.ProfileID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -130,7 +130,7 @@ func (h *Handler) handleUpdatePlaylist(w http.ResponseWriter, r *http.Request) {
 	p.Description = body.Description
 	p.CoverItem = body.CoverItem
 	p.IsPublic = body.IsPublic
-	if err := h.store.UpdatePlaylist(r.Context(), p, a.UserID); err != nil {
+	if err := h.store.UpdatePlaylist(r.Context(), p, a.UserID, a.ProfileID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -141,7 +141,7 @@ func (h *Handler) handleUpdatePlaylist(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleDeletePlaylist(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
 	id := chi.URLParam(r, "id")
-	if err := h.store.DeletePlaylist(r.Context(), id, a.UserID); err != nil {
+	if err := h.store.DeletePlaylist(r.Context(), id, a.UserID, a.ProfileID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -161,7 +161,7 @@ func (h *Handler) handleAddPlaylistItem(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "libraryItemId required", http.StatusBadRequest)
 		return
 	}
-	if err := h.store.AddPlaylistItem(r.Context(), plID, body.LibraryItemID, body.EpisodeID, a.UserID); err != nil {
+	if err := h.store.AddPlaylistItem(r.Context(), plID, body.LibraryItemID, body.EpisodeID, a.UserID, a.ProfileID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -184,7 +184,7 @@ func (h *Handler) handleBatchAddPlaylistItems(w http.ResponseWriter, r *http.Req
 		if it.LibraryItemID == "" {
 			continue
 		}
-		_ = h.store.AddPlaylistItem(r.Context(), plID, it.LibraryItemID, it.EpisodeID, a.UserID)
+		_ = h.store.AddPlaylistItem(r.Context(), plID, it.LibraryItemID, it.EpisodeID, a.UserID, a.ProfileID)
 	}
 	p, _ := h.store.GetPlaylist(r.Context(), plID)
 	h.publish(a.UserID, "playlist_updated", map[string]any{"id": plID})
@@ -202,7 +202,7 @@ func (h *Handler) handleBatchRemovePlaylistItems(w http.ResponseWriter, r *http.
 		return
 	}
 	for _, it := range body.Items {
-		_ = h.store.RemovePlaylistItem(r.Context(), plID, it.LibraryItemID, it.EpisodeID, a.UserID)
+		_ = h.store.RemovePlaylistItem(r.Context(), plID, it.LibraryItemID, it.EpisodeID, a.UserID, a.ProfileID)
 	}
 	p, _ := h.store.GetPlaylist(r.Context(), plID)
 	h.publish(a.UserID, "playlist_updated", map[string]any{"id": plID})
@@ -213,7 +213,7 @@ func (h *Handler) handleRemovePlaylistItem(w http.ResponseWriter, r *http.Reques
 	a, _ := absAuthFrom(r)
 	plID := chi.URLParam(r, "id")
 	libItem := chi.URLParam(r, "libraryItemId")
-	if err := h.store.RemovePlaylistItem(r.Context(), plID, libItem, "", a.UserID); err != nil {
+	if err := h.store.RemovePlaylistItem(r.Context(), plID, libItem, "", a.UserID, a.ProfileID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -227,7 +227,7 @@ func (h *Handler) handleRemovePlaylistEpisode(w http.ResponseWriter, r *http.Req
 	plID := chi.URLParam(r, "id")
 	libItem := chi.URLParam(r, "libraryItemId")
 	episode := chi.URLParam(r, "episodeId")
-	if err := h.store.RemovePlaylistItem(r.Context(), plID, libItem, episode, a.UserID); err != nil {
+	if err := h.store.RemovePlaylistItem(r.Context(), plID, libItem, episode, a.UserID, a.ProfileID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -240,6 +240,7 @@ func (h *Handler) handleRemovePlaylistEpisode(w http.ResponseWriter, r *http.Req
 // items: include the books[] array — list view sends false to keep
 // response sizes down.
 func (h *Handler) playlistToABSMap(r *http.Request, viewerID string, p store.Playlist, items bool) map[string]any {
+	a, _ := absAuthFrom(r)
 	out := map[string]any{
 		"id":          p.ID,
 		"userId":      p.UserID,
@@ -255,7 +256,7 @@ func (h *Handler) playlistToABSMap(r *http.Request, viewerID string, p store.Pla
 	if !items {
 		return out
 	}
-	rows, err := h.store.ListPlaylistItems(r.Context(), p.ID, viewerID)
+	rows, err := h.store.ListPlaylistItems(r.Context(), p.ID, viewerID, a.ProfileID)
 	if err != nil {
 		out["items"] = []any{}
 		return out

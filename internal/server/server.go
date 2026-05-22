@@ -104,6 +104,13 @@ func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]any{"error": msg})
 }
 
+// profileID extracts the active profile from the request. The host
+// proxy stamps the active profile as the X-Continuum-Profile-Id header;
+// an empty value means the primary profile.
+func profileID(r *http.Request) string {
+	return r.Header.Get("X-Continuum-Profile-Id")
+}
+
 // writeInternal handles an unexpected store/backend error. The underlying
 // error may carry SQL text, schema names, or internal paths, so it is logged
 // server-side (with the request method+path for triage) and only an opaque

@@ -21,7 +21,7 @@ func (s *Server) handleBookActivity(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	bookID := chi.URLParam(r, "id")
-	events, err := s.d.Store.BookActivity(r.Context(), id.UserID, bookID)
+	events, err := s.d.Store.BookActivity(r.Context(), id.UserID, profileID(r), bookID)
 	if err != nil {
 		writeInternal(w, r, err)
 		return

@@ -294,10 +294,10 @@ func (s *Server) handleGetAudiobookDetail(w http.ResponseWriter, r *http.Request
 	detail.MediaType = lib.MediaType
 	// Merge user state (progress, bookmarks, rating).
 	resp := map[string]any{"audiobook": detail}
-	if p, perr := s.d.Store.GetProgress(r.Context(), id.UserID, bookRef); perr == nil {
+	if p, perr := s.d.Store.GetProgress(r.Context(), id.UserID, profileID(r), bookRef); perr == nil {
 		resp["progress"] = p
 	}
-	if bks, berr := s.d.Store.ListBookmarks(r.Context(), id.UserID, bookRef); berr == nil {
+	if bks, berr := s.d.Store.ListBookmarks(r.Context(), id.UserID, profileID(r), bookRef); berr == nil {
 		resp["bookmarks"] = bks
 	}
 	if rt, rerr := s.d.Store.GetRating(r.Context(), id.UserID, bookRef); rerr == nil {

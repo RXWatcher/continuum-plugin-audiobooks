@@ -614,10 +614,10 @@ func AbsServerSettings() map[string]any {
 // absUserObject builds the ABS `user` envelope shared by /login,
 // /authorize and /me. mediaProgress is hydrated from the user's recent
 // progress rows so clients show resume positions without a second call.
-func (h *Handler) absUserObject(ctx context.Context, userID, displayName, defaultLibraryID string) map[string]any {
+func (h *Handler) absUserObject(ctx context.Context, userID, profileID, displayName, defaultLibraryID string) map[string]any {
 	progress := make([]map[string]any, 0)
 	if h.store != nil {
-		rows, _ := h.store.ListRecentProgress(ctx, userID, 200)
+		rows, _ := h.store.ListRecentProgress(ctx, userID, profileID, 200)
 		for _, p := range rows {
 			progress = append(progress, progressToABS(userID, p))
 		}
@@ -676,6 +676,7 @@ func (h *Handler) completeLogin(w http.ResponseWriter, r *http.Request, userID, 
 	if err := h.store.InsertABSToken(r.Context(), store.ABSToken{
 		ID:        accessJTI,
 		UserID:    userID,
+		ProfileID: profileID,
 		JTI:       accessJTI,
 		ExpiresAt: time.Now().Add(accessTTL),
 	}); err != nil {
@@ -690,6 +691,7 @@ func (h *Handler) completeLogin(w http.ResponseWriter, r *http.Request, userID, 
 	if err := h.store.InsertABSToken(r.Context(), store.ABSToken{
 		ID:        refreshJTI,
 		UserID:    userID,
+		ProfileID: profileID,
 		JTI:       refreshJTI,
 		ExpiresAt: time.Now().Add(refreshTTL),
 	}); err != nil {
@@ -717,7 +719,7 @@ func (h *Handler) completeLogin(w http.ResponseWriter, r *http.Request, userID, 
 	// from there, others from the top-level fields — emitting both
 	// covers every mainline reader).
 	returnTokens := strings.EqualFold(r.Header.Get("x-return-tokens"), "true")
-	user := h.absUserObject(r.Context(), userID, displayName, defaultLibraryID)
+	user := h.absUserObject(r.Context(), userID, profileID, displayName, defaultLibraryID)
 	user["token"] = access // legacy field some 2.17- clients still read
 	if returnTokens {
 		user["accessToken"] = access
@@ -758,7 +760,7 @@ func (h *Handler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 		}
 		libraryMaps = append(libraryMaps, absLibraryMap(lib))
 	}
-	user := h.absUserObject(r.Context(), a.UserID, "", defaultLibraryID)
+	user := h.absUserObject(r.Context(), a.UserID, a.ProfileID, "", defaultLibraryID)
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user":                 user,
 		"userDefaultLibraryId": defaultLibraryID,
@@ -895,7 +897,7 @@ func (h *Handler) handleLogout(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handleMe(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
 	lib, _ := h.defaultPortalLibrary(r.Context())
-	writeJSON(w, http.StatusOK, h.absUserObject(r.Context(), a.UserID, "", absLibraryID(lib)))
+	writeJSON(w, http.StatusOK, h.absUserObject(r.Context(), a.UserID, a.ProfileID, "", absLibraryID(lib)))
 }
 
 func (h *Handler) handleLibraries(w http.ResponseWriter, r *http.Request) {
@@ -1326,7 +1328,7 @@ func (h *Handler) handleSessionSync(w http.ResponseWriter, r *http.Request) {
 	if rawEpisodeID, isEpisode := DecodePodcastEpisodeID(sess.BookID); isEpisode {
 		_ = h.store.UpdatePodcastEpisodeProgressPosition(r.Context(), a.UserID, rawEpisodeID, int(p.CurrentTime))
 	} else {
-		_ = h.store.UpdateProgressPosition(r.Context(), a.UserID, sess.BookID, int(p.CurrentTime))
+		_ = h.store.UpdateProgressPosition(r.Context(), a.UserID, a.ProfileID, sess.BookID, int(p.CurrentTime))
 	}
 
 	// Push the new position to the user's other connected clients. We
@@ -1808,7 +1810,7 @@ func (h *Handler) handlePersonalized(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Resolve progress rows; classify by is_finished + progress_pct.
-	progRows, err := h.store.ListRecentProgress(r.Context(), a.UserID, 50)
+	progRows, err := h.store.ListRecentProgress(r.Context(), a.UserID, a.ProfileID, 50)
 	if err != nil {
 		h.logger.Warn("personalized: list progress", "err", err)
 		progRows = nil
@@ -2049,7 +2051,7 @@ func (h *Handler) handleGetProgress(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, podcastProgressToABS(a.UserID, p))
 		return
 	}
-	p, err := h.store.GetProgress(r.Context(), a.UserID, itemID)
+	p, err := h.store.GetProgress(r.Context(), a.UserID, a.ProfileID, itemID)
 	if errors.Is(err, store.ErrNotFound) {
 		http.Error(w, "progress not found", http.StatusNotFound)
 		return
@@ -2095,7 +2097,7 @@ func (h *Handler) handlePatchProgress(w http.ResponseWriter, r *http.Request) {
 	}
 	// Merge with existing row (if any) so the PATCH semantics hold: fields
 	// not present in the body keep their current value.
-	cur, err := h.store.GetProgress(r.Context(), a.UserID, itemID)
+	cur, err := h.store.GetProgress(r.Context(), a.UserID, a.ProfileID, itemID)
 	if err != nil && !errors.Is(err, store.ErrNotFound) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -2124,7 +2126,7 @@ func (h *Handler) handlePatchProgress(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	updated, err := h.store.GetProgress(r.Context(), a.UserID, itemID)
+	updated, err := h.store.GetProgress(r.Context(), a.UserID, a.ProfileID, itemID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

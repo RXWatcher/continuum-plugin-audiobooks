@@ -40,7 +40,7 @@ type smartCollectionBody struct {
 
 func (h *Handler) handleListSmartCollections(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
-	rows, err := h.store.ListSmartCollections(r.Context(), a.UserID, 200)
+	rows, err := h.store.ListSmartCollections(r.Context(), a.UserID, a.ProfileID, 200)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -104,7 +104,7 @@ func (h *Handler) handleUpdateSmartCollection(w http.ResponseWriter, r *http.Req
 
 func (h *Handler) handleDeleteSmartCollection(w http.ResponseWriter, r *http.Request) {
 	a, _ := absAuthFrom(r)
-	if err := h.store.DeleteSmartCollection(r.Context(), chi.URLParam(r, "id"), a.UserID); err != nil {
+	if err := h.store.DeleteSmartCollection(r.Context(), chi.URLParam(r, "id"), a.UserID, a.ProfileID); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -192,13 +192,13 @@ func (h *Handler) handleSmartCollectionItems(w http.ResponseWriter, r *http.Requ
 			// collections evaluate without personalization to avoid
 			// leaking who's listening to what).
 			if c.UserID == a.UserID {
-				if prog, perr := h.store.GetProgress(r.Context(), a.UserID, bookref.Encode(lib.ID, s.ID)); perr == nil {
+				if prog, perr := h.store.GetProgress(r.Context(), a.UserID, a.ProfileID, bookref.Encode(lib.ID, s.ID)); perr == nil {
 					cand.IsFinished = prog.IsFinished
 					cand.ProgressPct = prog.ProgressPct
 					cand.CurrentSeconds = prog.CurrentSeconds
 					cand.LastPlayedAt = prog.UpdatedAt
 				}
-				bookmarks, _ := h.store.ListBookmarks(r.Context(), a.UserID, bookref.Encode(lib.ID, s.ID))
+				bookmarks, _ := h.store.ListBookmarks(r.Context(), a.UserID, a.ProfileID, bookref.Encode(lib.ID, s.ID))
 				cand.BookmarkCount = len(bookmarks)
 			}
 			candidates = append(candidates, cand)

@@ -95,7 +95,7 @@ func (h *Handler) handleDeleteBookmark(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "time must be a positive integer", http.StatusBadRequest)
 		return
 	}
-	if err := h.store.DeleteBookmarkAt(r.Context(), a.UserID, itemID, t); err != nil {
+	if err := h.store.DeleteBookmarkAt(r.Context(), a.UserID, a.ProfileID, itemID, t); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -111,7 +111,8 @@ func (h *Handler) handleDeleteBookmark(w http.ResponseWriter, r *http.Request) {
 // Each entry: {libraryItemId, title, time, createdAt} — matches the
 // shape the mobile BookmarksModal expects to render.
 func (h *Handler) writeBookmarkList(w http.ResponseWriter, r *http.Request, userID, itemID string) {
-	rows, err := h.store.ListBookmarks(r.Context(), userID, itemID)
+	a, _ := absAuthFrom(r)
+	rows, err := h.store.ListBookmarks(r.Context(), userID, a.ProfileID, itemID)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
