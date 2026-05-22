@@ -245,3 +245,15 @@ func TestHandleStatusIdentifiesAsAudiobookshelf(t *testing.T) {
 		t.Errorf("authMethods = %v, want [local]", respBody["authMethods"])
 	}
 }
+
+func TestAbsServerSettingsShape(t *testing.T) {
+	s := abs.AbsServerSettings()
+	for _, k := range []string{"version", "language", "authActiveAuthMethods", "authOpenIDAutoLaunch"} {
+		if _, ok := s[k]; !ok {
+			t.Errorf("serverSettings missing %q", k)
+		}
+	}
+	if s["version"] != abs.ServerVersion {
+		t.Errorf("version = %v, want %s", s["version"], abs.ServerVersion)
+	}
+}

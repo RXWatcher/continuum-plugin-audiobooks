@@ -587,6 +587,38 @@ func (h *Handler) handleStandaloneLogin(w http.ResponseWriter, r *http.Request) 
 	h.completeLogin(w, r, res.UserID)
 }
 
+// AbsServerSettings is the serverSettings envelope ABS clients read on
+// login. Modelled on the upstream shape so clients that branch on these
+// fields (auth method list, OpenID flags, view prefs) behave correctly.
+func AbsServerSettings() map[string]any {
+	return map[string]any{
+		"id":                         "server-settings",
+		"version":                    ServerVersion,
+		"language":                   "en-us",
+		"buildNumber":                1,
+		"chromecastEnabled":          false,
+		"dateFormat":                 "MM/dd/yyyy",
+		"timeFormat":                 "HH:mm",
+		"homeBookshelfView":          1,
+		"bookshelfView":              1,
+		"sortingIgnorePrefix":        false,
+		"sortingPrefixes":            []string{"the", "a"},
+		"rateLimitLoginRequests":     10,
+		"rateLimitLoginWindow":       600000,
+		"allowIframe":                false,
+		"authActiveAuthMethods":      []string{"local"},
+		"authOpenIDAutoLaunch":       false,
+		"authOpenIDAutoRegister":     false,
+		"authOpenIDButtonText":       "Login with OpenId",
+		"authOpenIDIssuerURL":        nil,
+		"authOpenIDAuthorizationURL": nil,
+		"authOpenIDTokenURL":         nil,
+		"authOpenIDUserInfoURL":      nil,
+		"authOpenIDJwksURL":          nil,
+		"authOpenIDLogoutURL":        nil,
+	}
+}
+
 // completeLogin mints ABS access + refresh JWTs for the validated user and
 // writes the login response. Shared by both the header path and the
 // body-creds path so the response shape is identical.
@@ -684,11 +716,8 @@ func (h *Handler) completeLogin(w http.ResponseWriter, r *http.Request, userID s
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user":                 user,
 		"userDefaultLibraryId": defaultLibraryID,
-		"serverSettings": map[string]any{
-			"version":  ServerVersion,
-			"language": "en-us",
-		},
-		"ereaderDevices": []any{},
+		"serverSettings":       AbsServerSettings(),
+		"ereaderDevices":       []any{},
 		// Legacy top-level token fields for clients that read them
 		// directly (mainline web reads from the user object; some
 		// third-party clients still read top-level).
@@ -738,12 +767,9 @@ func (h *Handler) handleAuthorize(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{
 		"user":                 user,
 		"userDefaultLibraryId": defaultLibraryID,
-		"serverSettings": map[string]any{
-			"version":  ServerVersion,
-			"language": "en-us",
-		},
-		"ereaderDevices": []any{},
-		"libraries":      libraryMaps,
+		"serverSettings":       AbsServerSettings(),
+		"ereaderDevices":       []any{},
+		"libraries":            libraryMaps,
 	})
 }
 
