@@ -501,7 +501,7 @@ func (h *Handler) handleStatus(w http.ResponseWriter, _ *http.Request) {
 // branch is never rate-limited.
 func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	if userID := r.Header.Get("X-Continuum-User-Id"); userID != "" {
-		h.completeLogin(w, r, userID)
+		h.completeLogin(w, r, userID, r.Header.Get("X-Continuum-User-Name"))
 		return
 	}
 	h.handleStandaloneLogin(w, r)
@@ -584,7 +584,7 @@ func (h *Handler) handleStandaloneLogin(w http.ResponseWriter, r *http.Request) 
 
 	h.logger.Debug("abs.standalone_login: success",
 		"ip", ip, "user_id", res.UserID, "mode", mode)
-	h.completeLogin(w, r, res.UserID)
+	h.completeLogin(w, r, res.UserID, res.DisplayName)
 }
 
 // AbsServerSettings is the serverSettings envelope ABS clients read on
@@ -655,7 +655,7 @@ func (h *Handler) absUserObject(ctx context.Context, userID, displayName, defaul
 // completeLogin mints ABS access + refresh JWTs for the validated user and
 // writes the login response. Shared by both the header path and the
 // body-creds path so the response shape is identical.
-func (h *Handler) completeLogin(w http.ResponseWriter, r *http.Request, userID string) {
+func (h *Handler) completeLogin(w http.ResponseWriter, r *http.Request, userID, displayName string) {
 	_, cfg, err := h.targetFn(r.Context())
 	if err != nil {
 		http.Error(w, "config unavailable", http.StatusInternalServerError)
@@ -725,7 +725,7 @@ func (h *Handler) completeLogin(w http.ResponseWriter, r *http.Request, userID s
 	// from there, others from the top-level fields — emitting both
 	// covers every mainline reader).
 	returnTokens := strings.EqualFold(r.Header.Get("x-return-tokens"), "true")
-	user := h.absUserObject(r.Context(), userID, "", defaultLibraryID)
+	user := h.absUserObject(r.Context(), userID, displayName, defaultLibraryID)
 	user["token"] = access // legacy field some 2.17- clients still read
 	if returnTokens {
 		user["accessToken"] = access

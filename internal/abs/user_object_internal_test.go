@@ -5,6 +5,14 @@ import (
 	"testing"
 )
 
+func TestAbsUserObjectUsesDisplayName(t *testing.T) {
+	h := &Handler{}
+	obj := h.absUserObject(context.Background(), "42", "Alice", "lib1")
+	if obj["username"] != "Alice" {
+		t.Errorf("username = %v, want Alice", obj["username"])
+	}
+}
+
 func TestAbsUserObjectShape(t *testing.T) {
 	h := &Handler{}
 	obj := h.absUserObject(context.Background(), "u1", "", "lib1")
