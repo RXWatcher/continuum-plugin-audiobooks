@@ -27,7 +27,7 @@ type Streak struct {
 // We pull distinct dates rather than a row-per-progress aggregate
 // because some users have thousands of progress updates per day
 // during binge sessions, and the dedup happens cheaper in SQL.
-func (s *Store) StreakForUser(ctx context.Context, userID string, loc *time.Location) (Streak, error) {
+func (s *Store) StreakForUser(ctx context.Context, userID, profileID string, loc *time.Location) (Streak, error) {
 	if userID == "" {
 		return Streak{}, fmt.Errorf("user_id required")
 	}
@@ -35,12 +35,12 @@ func (s *Store) StreakForUser(ctx context.Context, userID string, loc *time.Loca
 		loc = time.UTC
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT DISTINCT date_trunc('day', updated_at AT TIME ZONE $2)::date AS day
+		SELECT DISTINCT date_trunc('day', updated_at AT TIME ZONE $3)::date AS day
 		FROM progress
-		WHERE user_id = $1
+		WHERE user_id = $1 AND profile_id = $2
 		ORDER BY day DESC
 		LIMIT 365
-	`, userID, loc.String())
+	`, userID, profileID, loc.String())
 	if err != nil {
 		return Streak{}, fmt.Errorf("streak query: %w", err)
 	}

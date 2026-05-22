@@ -20,7 +20,7 @@ type ActivityEvent struct {
 // BookActivity merges events from progress, bookmark, abs_session,
 // and rating tables for one (user, book) pair. Returned in
 // reverse-chronological order so the SPA renders newest-first.
-func (s *Store) BookActivity(ctx context.Context, userID, bookID string) ([]ActivityEvent, error) {
+func (s *Store) BookActivity(ctx context.Context, userID, profileID, bookID string) ([]ActivityEvent, error) {
 	if userID == "" || bookID == "" {
 		return nil, errors.New("user_id, book_id required")
 	}
@@ -29,7 +29,7 @@ func (s *Store) BookActivity(ctx context.Context, userID, bookID string) ([]Acti
 	// Progress row → emit one "progress" event with the latest
 	// position. Older progress positions aren't preserved (we
 	// don't keep a history) so this is a single point.
-	if p, err := s.GetProgress(ctx, userID, bookID); err == nil {
+	if p, err := s.GetProgress(ctx, userID, profileID, bookID); err == nil {
 		out = append(out, ActivityEvent{
 			At:   p.UpdatedAt,
 			Kind: "progress",

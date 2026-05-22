@@ -98,7 +98,7 @@ type GoalProgress struct {
 // where is_finished = true; hours progress = sum of
 // reading_session.seconds_played / 3600. on_pace = actual /
 // daysIntoYear >= target / daysInYear.
-func (s *Store) GoalProgressForUser(ctx context.Context, userID string, year int, loc *time.Location) ([]GoalProgress, error) {
+func (s *Store) GoalProgressForUser(ctx context.Context, userID, profileID string, year int, loc *time.Location) ([]GoalProgress, error) {
 	goals, err := s.ListReadingGoals(ctx, userID, year)
 	if err != nil {
 		return nil, err
@@ -137,9 +137,9 @@ func (s *Store) GoalProgressForUser(ctx context.Context, userID string, year int
 			var n int
 			err := s.pool.QueryRow(ctx, `
 				SELECT COUNT(DISTINCT book_id)::int FROM progress
-				WHERE user_id = $1 AND is_finished = TRUE
-				  AND updated_at >= $2 AND updated_at < $3
-			`, userID, yearStart, yearEnd).Scan(&n)
+				WHERE user_id = $1 AND profile_id = $2 AND is_finished = TRUE
+				  AND updated_at >= $3 AND updated_at < $4
+			`, userID, profileID, yearStart, yearEnd).Scan(&n)
 			if err != nil {
 				return nil, fmt.Errorf("books progress: %w", err)
 			}
