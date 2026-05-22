@@ -14,6 +14,7 @@ import (
 type ABSSession struct {
 	ID          string
 	UserID      string
+	ProfileID   string
 	BookID      string
 	DeviceID    string
 	DeviceInfo  map[string]any
@@ -42,10 +43,10 @@ func (s *Store) InsertABSSession(ctx context.Context, sess ABSSession) error {
 	}
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO abs_playback_session
-			(id, user_id, book_id, device_id, device_info, play_method, media_player,
+			(id, user_id, profile_id, book_id, device_id, device_info, play_method, media_player,
 			 start_time, current_time_ms)
-		VALUES ($1, $2, $3, $4, $5, $6, NULLIF($7,''), $8, $9)
-	`, sess.ID, sess.UserID, sess.BookID, sess.DeviceID, info, method, sess.MediaPlayer,
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NULLIF($8,''), $9, $10)
+	`, sess.ID, sess.UserID, sess.ProfileID, sess.BookID, sess.DeviceID, info, method, sess.MediaPlayer,
 		sess.StartTime, sess.CurrentTime)
 	if err != nil {
 		return fmt.Errorf("insert abs_session: %w", err)
@@ -82,14 +83,14 @@ func (s *Store) CloseABSSession(ctx context.Context, id string) error {
 // GetABSSession fetches a session by id.
 func (s *Store) GetABSSession(ctx context.Context, id string) (ABSSession, error) {
 	row := s.pool.QueryRow(ctx, `
-		SELECT id, user_id, book_id, device_id, device_info, play_method,
+		SELECT id, user_id, profile_id, book_id, device_id, device_info, play_method,
 		       COALESCE(media_player,''), start_time, current_time_ms, started_at,
 		       last_update, closed_at
 		FROM abs_playback_session WHERE id = $1
 	`, id)
 	var sess ABSSession
 	var info []byte
-	if err := row.Scan(&sess.ID, &sess.UserID, &sess.BookID, &sess.DeviceID,
+	if err := row.Scan(&sess.ID, &sess.UserID, &sess.ProfileID, &sess.BookID, &sess.DeviceID,
 		&info, &sess.PlayMethod, &sess.MediaPlayer, &sess.StartTime, &sess.CurrentTime,
 		&sess.StartedAt, &sess.LastUpdate, &sess.ClosedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
@@ -124,7 +125,7 @@ func (s *Store) ListActiveABSSessions(ctx context.Context, limit int) ([]ABSSess
 		limit = 500
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, user_id, book_id, device_id, device_info, play_method,
+		SELECT id, user_id, profile_id, book_id, device_id, device_info, play_method,
 		       COALESCE(media_player,''), start_time, current_time_ms, started_at,
 		       last_update, closed_at
 		FROM abs_playback_session WHERE closed_at IS NULL
@@ -138,7 +139,7 @@ func (s *Store) ListActiveABSSessions(ctx context.Context, limit int) ([]ABSSess
 	for rows.Next() {
 		var sess ABSSession
 		var info []byte
-		if err := rows.Scan(&sess.ID, &sess.UserID, &sess.BookID, &sess.DeviceID,
+		if err := rows.Scan(&sess.ID, &sess.UserID, &sess.ProfileID, &sess.BookID, &sess.DeviceID,
 			&info, &sess.PlayMethod, &sess.MediaPlayer, &sess.StartTime, &sess.CurrentTime,
 			&sess.StartedAt, &sess.LastUpdate, &sess.ClosedAt); err != nil {
 			return nil, fmt.Errorf("scan abs_session: %w", err)
@@ -151,19 +152,20 @@ func (s *Store) ListActiveABSSessions(ctx context.Context, limit int) ([]ABSSess
 	return out, rows.Err()
 }
 
-// ListActiveABSSessionsForUser returns active sessions owned by one user.
-func (s *Store) ListActiveABSSessionsForUser(ctx context.Context, userID string, limit int) ([]ABSSession, error) {
+// ListActiveABSSessionsForUser returns active sessions owned by one user under
+// a specific profile. Pass profileID="" for the primary profile.
+func (s *Store) ListActiveABSSessionsForUser(ctx context.Context, userID string, profileID string, limit int) ([]ABSSession, error) {
 	if limit <= 0 {
 		limit = 100
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, user_id, book_id, device_id, device_info, play_method,
+		SELECT id, user_id, profile_id, book_id, device_id, device_info, play_method,
 		       COALESCE(media_player,''), start_time, current_time_ms, started_at,
 		       last_update, closed_at
 		FROM abs_playback_session
-		WHERE closed_at IS NULL AND user_id = $1
-		ORDER BY last_update DESC LIMIT $2
-	`, userID, limit)
+		WHERE closed_at IS NULL AND user_id = $1 AND profile_id = $2
+		ORDER BY last_update DESC LIMIT $3
+	`, userID, profileID, limit)
 	if err != nil {
 		return nil, fmt.Errorf("list active user sessions: %w", err)
 	}
@@ -172,7 +174,7 @@ func (s *Store) ListActiveABSSessionsForUser(ctx context.Context, userID string,
 	for rows.Next() {
 		var sess ABSSession
 		var info []byte
-		if err := rows.Scan(&sess.ID, &sess.UserID, &sess.BookID, &sess.DeviceID,
+		if err := rows.Scan(&sess.ID, &sess.UserID, &sess.ProfileID, &sess.BookID, &sess.DeviceID,
 			&info, &sess.PlayMethod, &sess.MediaPlayer, &sess.StartTime, &sess.CurrentTime,
 			&sess.StartedAt, &sess.LastUpdate, &sess.ClosedAt); err != nil {
 			return nil, fmt.Errorf("scan abs_session: %w", err)

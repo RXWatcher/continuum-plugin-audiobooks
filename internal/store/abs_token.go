@@ -14,6 +14,7 @@ import (
 type ABSToken struct {
 	ID         string
 	UserID     string
+	ProfileID  string
 	JTI        string
 	DeviceID   string
 	DeviceName string
@@ -38,9 +39,9 @@ func (s *Store) InsertABSToken(ctx context.Context, t ABSToken) error {
 		info = b
 	}
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO abs_token (id, user_id, jti, device_id, device_name, device_info, expires_at)
-		VALUES ($1, $2, $3, NULLIF($4,''), NULLIF($5,''), $6, $7)
-	`, t.ID, t.UserID, t.JTI, t.DeviceID, t.DeviceName, info, t.ExpiresAt)
+		INSERT INTO abs_token (id, user_id, profile_id, jti, device_id, device_name, device_info, expires_at)
+		VALUES ($1, $2, $3, $4, NULLIF($5,''), NULLIF($6,''), $7, $8)
+	`, t.ID, t.UserID, t.ProfileID, t.JTI, t.DeviceID, t.DeviceName, info, t.ExpiresAt)
 	if err != nil {
 		return fmt.Errorf("insert abs_token: %w", err)
 	}
@@ -51,13 +52,13 @@ func (s *Store) InsertABSToken(ctx context.Context, t ABSToken) error {
 // NULL and expires_at > now().
 func (s *Store) GetABSTokenByJTI(ctx context.Context, jti string) (ABSToken, error) {
 	row := s.pool.QueryRow(ctx, `
-		SELECT id, user_id, jti, COALESCE(device_id,''), COALESCE(device_name,''),
+		SELECT id, user_id, profile_id, jti, COALESCE(device_id,''), COALESCE(device_name,''),
 		       device_info, last_used_at, expires_at, revoked_at, created_at
 		FROM abs_token WHERE jti = $1
 	`, jti)
 	var t ABSToken
 	var info []byte
-	if err := row.Scan(&t.ID, &t.UserID, &t.JTI, &t.DeviceID, &t.DeviceName,
+	if err := row.Scan(&t.ID, &t.UserID, &t.ProfileID, &t.JTI, &t.DeviceID, &t.DeviceName,
 		&info, &t.LastUsedAt, &t.ExpiresAt, &t.RevokedAt, &t.CreatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return ABSToken{}, ErrNotFound
@@ -96,7 +97,7 @@ func (s *Store) RevokeABSToken(ctx context.Context, id, userID string) error {
 // ListABSTokens returns tokens for a user (admin context: pass empty userID to list all).
 func (s *Store) ListABSTokens(ctx context.Context, userID string) ([]ABSToken, error) {
 	q := `
-		SELECT id, user_id, jti, COALESCE(device_id,''), COALESCE(device_name,''),
+		SELECT id, user_id, profile_id, jti, COALESCE(device_id,''), COALESCE(device_name,''),
 		       device_info, last_used_at, expires_at, revoked_at, created_at
 		FROM abs_token`
 	args := []any{}
@@ -115,7 +116,7 @@ func (s *Store) ListABSTokens(ctx context.Context, userID string) ([]ABSToken, e
 	for rows.Next() {
 		var t ABSToken
 		var info []byte
-		if err := rows.Scan(&t.ID, &t.UserID, &t.JTI, &t.DeviceID, &t.DeviceName,
+		if err := rows.Scan(&t.ID, &t.UserID, &t.ProfileID, &t.JTI, &t.DeviceID, &t.DeviceName,
 			&info, &t.LastUsedAt, &t.ExpiresAt, &t.RevokedAt, &t.CreatedAt); err != nil {
 			return nil, fmt.Errorf("scan abs_token: %w", err)
 		}
