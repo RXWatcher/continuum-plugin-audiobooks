@@ -499,8 +499,6 @@ func (h *Handler) handleStatus(w http.ResponseWriter, _ *http.Request) {
 // backend_config.standalone_login_mode setting:
 //
 //   - "disabled": header path only. Body-creds always 401.
-//   - "opt_in":   body-creds works for users with a row in
-//     abs_standalone_opt_ins.
 //   - "all_accounts": body-creds works for any account the host's local
 //     provider accepts.
 //
