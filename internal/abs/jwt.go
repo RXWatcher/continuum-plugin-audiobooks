@@ -16,6 +16,7 @@ import (
 type Claims struct {
 	Type      string `json:"type"` // access | refresh | session
 	UserID    string `json:"sub"`  // user id
+	ProfileID string `json:"pid,omitempty"` // empty = primary profile
 	JTI       string `json:"jti"`  // token id (revocable)
 	DeviceID  string `json:"device_id,omitempty"`
 	SessionID string `json:"sid,omitempty"`
@@ -25,11 +26,12 @@ type Claims struct {
 }
 
 // IssueAccessToken mints a stateless access JWT.
-func IssueAccessToken(secret []byte, userID, jti string, ttl time.Duration) (string, error) {
+func IssueAccessToken(secret []byte, userID, profileID, jti string, ttl time.Duration) (string, error) {
 	return issue(secret, Claims{
-		Type:   "access",
-		UserID: userID,
-		JTI:    jti,
+		Type:      "access",
+		UserID:    userID,
+		ProfileID: profileID,
+		JTI:       jti,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -38,11 +40,12 @@ func IssueAccessToken(secret []byte, userID, jti string, ttl time.Duration) (str
 }
 
 // IssueRefreshToken mints a refresh JWT.
-func IssueRefreshToken(secret []byte, userID, jti string, ttl time.Duration) (string, error) {
+func IssueRefreshToken(secret []byte, userID, profileID, jti string, ttl time.Duration) (string, error) {
 	return issue(secret, Claims{
-		Type:   "refresh",
-		UserID: userID,
-		JTI:    jti,
+		Type:      "refresh",
+		UserID:    userID,
+		ProfileID: profileID,
+		JTI:       jti,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(ttl)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

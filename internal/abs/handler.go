@@ -671,12 +671,12 @@ func (h *Handler) completeLogin(w http.ResponseWriter, r *http.Request, userID, 
 	}
 	accessJTI := ulid.Make().String()
 	refreshJTI := ulid.Make().String()
-	access, err := IssueAccessToken(cfg.ABSJWTSecret, userID, accessJTI, accessTTL)
+	access, err := IssueAccessToken(cfg.ABSJWTSecret, userID, "", accessJTI, accessTTL)
 	if err != nil {
 		http.Error(w, "mint access: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	refresh, err := IssueRefreshToken(cfg.ABSJWTSecret, userID, refreshJTI, refreshTTL)
+	refresh, err := IssueRefreshToken(cfg.ABSJWTSecret, userID, "", refreshJTI, refreshTTL)
 	if err != nil {
 		http.Error(w, "mint refresh: "+err.Error(), http.StatusInternalServerError)
 		return
@@ -839,12 +839,12 @@ func (h *Handler) handleRefresh(w http.ResponseWriter, r *http.Request) {
 	refreshTTL := time.Duration(cfg.ABSRefreshTTLDays) * 24 * time.Hour
 	newAccessJTI := ulid.Make().String()
 	newRefreshJTI := ulid.Make().String()
-	access, err := IssueAccessToken(cfg.ABSJWTSecret, claims.UserID, newAccessJTI, accessTTL)
+	access, err := IssueAccessToken(cfg.ABSJWTSecret, claims.UserID, claims.ProfileID, newAccessJTI, accessTTL)
 	if err != nil {
 		http.Error(w, "token mint failed", http.StatusInternalServerError)
 		return
 	}
-	refresh, err := IssueRefreshToken(cfg.ABSJWTSecret, claims.UserID, newRefreshJTI, refreshTTL)
+	refresh, err := IssueRefreshToken(cfg.ABSJWTSecret, claims.UserID, claims.ProfileID, newRefreshJTI, refreshTTL)
 	if err != nil {
 		http.Error(w, "token mint failed", http.StatusInternalServerError)
 		return

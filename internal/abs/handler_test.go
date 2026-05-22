@@ -160,7 +160,7 @@ func TestBearerAuth_RejectsMissingToken(t *testing.T) {
 // disabling signature verification (e.g., by accepting any well-formed JWT).
 func TestBearerAuth_RejectsBadSignature(t *testing.T) {
 	f := newAuthFixture(t)
-	bad, err := abs.IssueAccessToken([]byte("different-32-byte-key-zzzzzzzzzz"), "u", "j-1", time.Hour)
+	bad, err := abs.IssueAccessToken([]byte("different-32-byte-key-zzzzzzzzzz"), "u", "", "j-1", time.Hour)
 	if err != nil {
 		t.Fatalf("issue: %v", err)
 	}
