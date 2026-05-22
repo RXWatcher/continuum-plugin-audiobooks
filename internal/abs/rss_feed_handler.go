@@ -50,16 +50,16 @@ func (h *Handler) mountRSSFeedRoutes(prefix string, r chi.Router) {
 func (h *Handler) MountPublicFeed(r chi.Router) {
 	r.Get("/feed/{slug}.xml", h.handlePublicFeed)
 	r.Get("/feed/{slug}", h.handlePublicFeed)
-	r.Get("/feed/{slug}/track/{idx}", h.handlePublicFeedTrack)
+	r.Get("/feed/{slug}/track/{ref}/{idx}", h.handlePublicFeedTrack)
 }
 
 // handlePublicFeedTrack serves the audio enclosure for an RSS feed
-// episode. The feed slug is the capability — no Bearer token (podcast
-// apps don't speak custom auth). It mirrors handlePublicTrack's
-// byte-proxy: mint a short-lived media token, proxy the backend stream
-// so the URL stays on the listener the subscriber is talking to.
+// episode. The feed slug is the capability (podcast apps don't speak
+// custom auth); the {ref} path segment is the encoded bookref of the
+// specific book. It mirrors handlePublicTrack's byte-proxy.
 func (h *Handler) handlePublicFeedTrack(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	ref := chi.URLParam(r, "ref")
 	idxRaw := chi.URLParam(r, "idx")
 	// The enclosure URL carries a file extension (e.g. "0.mp3"); strip it.
 	if dot := strings.IndexByte(idxRaw, '.'); dot >= 0 {
@@ -80,11 +80,39 @@ func (h *Handler) handlePublicFeedTrack(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if feed.EntityType != "item" {
-		http.Error(w, "track enclosures are only served for item feeds", http.StatusNotFound)
-		return
+
+	// Verify the requested book belongs to the feed so a leaked slug
+	// cannot be used to walk the owner's whole library:
+	//   - item feed: ref must be the feed's single book.
+	//   - collection feed: ref must be a member of the collection.
+	//   - series feed: membership is a catalog scan too expensive to run
+	//     per byte-range request; the unguessable slug is the gate.
+	switch feed.EntityType {
+	case "item":
+		if ref != feed.EntityID {
+			http.Error(w, "track not part of this feed", http.StatusNotFound)
+			return
+		}
+	case "collection":
+		items, err := h.store.ListCollectionItems(r.Context(), feed.EntityID, feed.UserID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		inFeed := false
+		for _, it := range items {
+			if it.BookID == ref {
+				inFeed = true
+				break
+			}
+		}
+		if !inFeed {
+			http.Error(w, "track not part of this feed", http.StatusNotFound)
+			return
+		}
 	}
-	lib, backendBookID, _, err := h.portalLibraryForBookRef(r.Context(), feed.EntityID)
+
+	lib, backendBookID, _, err := h.portalLibraryForBookRef(r.Context(), ref)
 	if err != nil || lib.BackendPluginID == "" {
 		http.Error(w, "no backend configured", http.StatusPreconditionFailed)
 		return
@@ -324,7 +352,7 @@ func (h *Handler) itemFeedEpisodes(r *http.Request, encoded, scheme, host string
 		// with the feed slug + index; we adopt the same scheme so
 		// the URL stays unguessable even when the slug is.
 		trackURL := scheme + "://" + host + "/feed/" + chi.URLParam(r, "slug") +
-			"/track/" + strconv.Itoa(i) + "." + strings.ToLower(strings.TrimPrefix(f.Format, "."))
+			"/track/" + neturl.PathEscape(encoded) + "/" + strconv.Itoa(i) + "." + strings.ToLower(strings.TrimPrefix(f.Format, "."))
 		title := detail.Title
 		if len(detail.Files) > 1 {
 			title = detail.Title + " — Track " + strconv.Itoa(i+1)
@@ -445,7 +473,7 @@ func (h *Handler) singleBookEpisode(r *http.Request, encoded, scheme, host, slug
 	}
 	f := detail.Files[0]
 	trackURL := scheme + "://" + host + "/feed/" + slug +
-		"/track/" + strconv.Itoa(0) + "." + strings.ToLower(strings.TrimPrefix(f.Format, "."))
+		"/track/" + neturl.PathEscape(encoded) + "/" + strconv.Itoa(0) + "." + strings.ToLower(strings.TrimPrefix(f.Format, "."))
 	return &rssItem{
 		Title:       detail.Title,
 		Description: detail.Description,

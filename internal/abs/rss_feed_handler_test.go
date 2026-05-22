@@ -17,7 +17,7 @@ func TestPublicFeedTrackRouteIsRegistered(t *testing.T) {
 	h.MountPublicFeed(r)
 
 	rctx := chi.NewRouteContext()
-	if !r.Match(rctx, http.MethodGet, "/feed/abc/track/0.mp3") {
-		t.Fatal("GET /feed/{slug}/track/{idx} is not routed")
+	if !r.Match(rctx, http.MethodGet, "/feed/abc/track/li_5:somebook/0.mp3") {
+		t.Fatal("GET /feed/{slug}/track/{ref}/{idx} is not routed")
 	}
 }
