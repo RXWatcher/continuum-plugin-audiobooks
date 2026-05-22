@@ -13,6 +13,7 @@ import (
 type Collection struct {
 	ID          string
 	UserID      string
+	ProfileID   string
 	Name        string
 	Color       string
 	IsPublic    bool
@@ -32,9 +33,9 @@ type CollectionItem struct {
 // CreateCollection inserts a new collection row.
 func (s *Store) CreateCollection(ctx context.Context, c Collection) error {
 	_, err := s.pool.Exec(ctx, `
-		INSERT INTO collection (id, user_id, name, color, is_public, is_pinned, cover_book_id)
-		VALUES ($1, $2, $3, NULLIF($4,''), $5, $6, NULLIF($7,''))
-	`, c.ID, c.UserID, c.Name, c.Color, c.IsPublic, c.IsPinned, c.CoverBookID)
+		INSERT INTO collection (id, user_id, profile_id, name, color, is_public, is_pinned, cover_book_id)
+		VALUES ($1, $2, $3, $4, NULLIF($5,''), $6, $7, NULLIF($8,''))
+	`, c.ID, c.UserID, c.ProfileID, c.Name, c.Color, c.IsPublic, c.IsPinned, c.CoverBookID)
 	if err != nil {
 		return fmt.Errorf("create collection: %w", err)
 	}
@@ -43,7 +44,7 @@ func (s *Store) CreateCollection(ctx context.Context, c Collection) error {
 
 // UpdateCollection writes a collection's mutable fields. ownerID is the
 // authorising user; pass empty to update unconditionally (admin context).
-func (s *Store) UpdateCollection(ctx context.Context, c Collection, ownerID string) error {
+func (s *Store) UpdateCollection(ctx context.Context, c Collection, ownerID string, profileID string) error {
 	args := []any{c.ID, c.Name, c.Color, c.IsPublic, c.IsPinned, c.CoverBookID}
 	q := `UPDATE collection SET
 		name = $2,
@@ -53,8 +54,8 @@ func (s *Store) UpdateCollection(ctx context.Context, c Collection, ownerID stri
 		cover_book_id = NULLIF($6,'')
 		WHERE id = $1`
 	if ownerID != "" {
-		q += " AND user_id = $7"
-		args = append(args, ownerID)
+		q += " AND user_id = $7 AND profile_id = $8"
+		args = append(args, ownerID, profileID)
 	}
 	res, err := s.pool.Exec(ctx, q, args...)
 	if err != nil {
@@ -67,8 +68,8 @@ func (s *Store) UpdateCollection(ctx context.Context, c Collection, ownerID stri
 }
 
 // DeleteCollection removes a collection (and its items via ON DELETE CASCADE).
-func (s *Store) DeleteCollection(ctx context.Context, id, ownerID string) error {
-	res, err := s.pool.Exec(ctx, `DELETE FROM collection WHERE id = $1 AND user_id = $2`, id, ownerID)
+func (s *Store) DeleteCollection(ctx context.Context, id, ownerID string, profileID string) error {
+	res, err := s.pool.Exec(ctx, `DELETE FROM collection WHERE id = $1 AND user_id = $2 AND profile_id = $3`, id, ownerID, profileID)
 	if err != nil {
 		return fmt.Errorf("delete collection: %w", err)
 	}
@@ -81,21 +82,21 @@ func (s *Store) DeleteCollection(ctx context.Context, id, ownerID string) error 
 // GetCollection fetches one collection row.
 func (s *Store) GetCollection(ctx context.Context, id string) (Collection, error) {
 	row := s.pool.QueryRow(ctx, `
-		SELECT id, user_id, name, COALESCE(color,''), is_public, is_pinned,
+		SELECT id, user_id, profile_id, name, COALESCE(color,''), is_public, is_pinned,
 		       COALESCE(cover_book_id,''), created_at
 		FROM collection WHERE id = $1
 	`, id)
 	return scanCollection(row)
 }
 
-// ListUserCollections returns the user's own collections.
-func (s *Store) ListUserCollections(ctx context.Context, userID string) ([]Collection, error) {
+// ListUserCollections returns the user's own collections scoped to profileID.
+func (s *Store) ListUserCollections(ctx context.Context, userID string, profileID string) ([]Collection, error) {
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, user_id, name, COALESCE(color,''), is_public, is_pinned,
+		SELECT id, user_id, profile_id, name, COALESCE(color,''), is_public, is_pinned,
 		       COALESCE(cover_book_id,''), created_at
-		FROM collection WHERE user_id = $1
+		FROM collection WHERE user_id = $1 AND profile_id = $2
 		ORDER BY is_pinned DESC, name ASC
-	`, userID)
+	`, userID, profileID)
 	if err != nil {
 		return nil, fmt.Errorf("list user collections: %w", err)
 	}
@@ -109,7 +110,7 @@ func (s *Store) ListPublicCollections(ctx context.Context, limit int) ([]Collect
 		limit = 200
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT id, user_id, name, COALESCE(color,''), is_public, is_pinned,
+		SELECT id, user_id, profile_id, name, COALESCE(color,''), is_public, is_pinned,
 		       COALESCE(cover_book_id,''), created_at
 		FROM collection WHERE is_public = true
 		ORDER BY created_at DESC LIMIT $1
@@ -122,16 +123,16 @@ func (s *Store) ListPublicCollections(ctx context.Context, limit int) ([]Collect
 }
 
 // AddCollectionItem appends an item with monotonic position. The insert is
-// gated on the collection being owned by ownerID, so a user can't write into
-// another user's collection by guessing its id (IDOR).
-func (s *Store) AddCollectionItem(ctx context.Context, collectionID, bookID, ownerID string) error {
+// gated on the collection being owned by ownerID and profileID, so a user
+// can't write into another user's collection by guessing its id (IDOR).
+func (s *Store) AddCollectionItem(ctx context.Context, collectionID, bookID, ownerID string, profileID string) error {
 	_, err := s.pool.Exec(ctx, `
 		INSERT INTO collection_item (collection_id, book_id, position)
 		SELECT $1, $2,
 			COALESCE((SELECT MAX(position) FROM collection_item WHERE collection_id = $1), 0) + 1
-		WHERE EXISTS (SELECT 1 FROM collection WHERE id = $1 AND user_id = $3)
+		WHERE EXISTS (SELECT 1 FROM collection WHERE id = $1 AND user_id = $3 AND profile_id = $4)
 		ON CONFLICT (collection_id, book_id) DO NOTHING
-	`, collectionID, bookID, ownerID)
+	`, collectionID, bookID, ownerID, profileID)
 	if err != nil {
 		return fmt.Errorf("add collection item: %w", err)
 	}
@@ -139,13 +140,13 @@ func (s *Store) AddCollectionItem(ctx context.Context, collectionID, bookID, own
 }
 
 // RemoveCollectionItem deletes a (collection, book) row, only from a
-// collection owned by ownerID.
-func (s *Store) RemoveCollectionItem(ctx context.Context, collectionID, bookID, ownerID string) error {
+// collection owned by ownerID and profileID.
+func (s *Store) RemoveCollectionItem(ctx context.Context, collectionID, bookID, ownerID string, profileID string) error {
 	_, err := s.pool.Exec(ctx,
 		`DELETE FROM collection_item
 		 WHERE collection_id = $1 AND book_id = $2
-		   AND collection_id IN (SELECT id FROM collection WHERE id = $1 AND user_id = $3)`,
-		collectionID, bookID, ownerID)
+		   AND collection_id IN (SELECT id FROM collection WHERE id = $1 AND user_id = $3 AND profile_id = $4)`,
+		collectionID, bookID, ownerID, profileID)
 	if err != nil {
 		return fmt.Errorf("remove collection item: %w", err)
 	}
@@ -153,18 +154,19 @@ func (s *Store) RemoveCollectionItem(ctx context.Context, collectionID, bookID, 
 }
 
 // ListCollectionItems returns the items in a collection, ordered by position.
-// Visible only to the owner, or to anyone when the collection is public.
-func (s *Store) ListCollectionItems(ctx context.Context, collectionID, viewerID string) ([]CollectionItem, error) {
+// Visible only to the owner (matched by userID+profileID), or to anyone when
+// the collection is public.
+func (s *Store) ListCollectionItems(ctx context.Context, collectionID, viewerID string, profileID string) ([]CollectionItem, error) {
 	rows, err := s.pool.Query(ctx, `
 		SELECT collection_id, book_id, position, added_at
 		FROM collection_item
 		WHERE collection_id = $1
 		  AND collection_id IN (
 		      SELECT id FROM collection
-		      WHERE id = $1 AND (user_id = $2 OR is_public)
+		      WHERE id = $1 AND ((user_id = $2 AND profile_id = $3) OR is_public)
 		  )
 		ORDER BY position ASC
-	`, collectionID, viewerID)
+	`, collectionID, viewerID, profileID)
 	if err != nil {
 		return nil, fmt.Errorf("list collection items: %w", err)
 	}
@@ -182,7 +184,7 @@ func (s *Store) ListCollectionItems(ctx context.Context, collectionID, viewerID 
 
 func scanCollection(row pgx.Row) (Collection, error) {
 	var c Collection
-	if err := row.Scan(&c.ID, &c.UserID, &c.Name, &c.Color, &c.IsPublic, &c.IsPinned, &c.CoverBookID, &c.CreatedAt); err != nil {
+	if err := row.Scan(&c.ID, &c.UserID, &c.ProfileID, &c.Name, &c.Color, &c.IsPublic, &c.IsPinned, &c.CoverBookID, &c.CreatedAt); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return Collection{}, ErrNotFound
 		}

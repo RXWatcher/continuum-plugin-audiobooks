@@ -91,34 +91,34 @@ func TestCollectionItemIDOR(t *testing.T) {
 	}
 
 	// Attacker cannot write into Alice's collection.
-	if err := st.AddCollectionItem(ctx, "c1", "bookX", attacker); err != nil {
+	if err := st.AddCollectionItem(ctx, "c1", "bookX", attacker, ""); err != nil {
 		t.Fatalf("add (gated, want silent no-op): %v", err)
 	}
-	if items, _ := st.ListCollectionItems(ctx, "c1", owner); len(items) != 0 {
+	if items, _ := st.ListCollectionItems(ctx, "c1", owner, ""); len(items) != 0 {
 		t.Fatalf("attacker injected an item: %+v", items)
 	}
 
 	// Owner can.
-	if err := st.AddCollectionItem(ctx, "c1", "bookX", owner); err != nil {
+	if err := st.AddCollectionItem(ctx, "c1", "bookX", owner, ""); err != nil {
 		t.Fatalf("owner add: %v", err)
 	}
-	if items, _ := st.ListCollectionItems(ctx, "c1", owner); len(items) != 1 {
+	if items, _ := st.ListCollectionItems(ctx, "c1", owner, ""); len(items) != 1 {
 		t.Fatalf("owner add did not take: %+v", items)
 	}
 
 	// Attacker cannot remove the owner's item.
-	if err := st.RemoveCollectionItem(ctx, "c1", "bookX", attacker); err != nil {
+	if err := st.RemoveCollectionItem(ctx, "c1", "bookX", attacker, ""); err != nil {
 		t.Fatalf("remove (gated, want no-op): %v", err)
 	}
-	if items, _ := st.ListCollectionItems(ctx, "c1", owner); len(items) != 1 {
+	if items, _ := st.ListCollectionItems(ctx, "c1", owner, ""); len(items) != 1 {
 		t.Fatalf("attacker removed owner's item: %+v", items)
 	}
 
 	// Attacker cannot delete the collection; owner can.
-	if err := st.DeleteCollection(ctx, "c1", attacker); !errors.Is(err, store.ErrNotFound) {
+	if err := st.DeleteCollection(ctx, "c1", attacker, ""); !errors.Is(err, store.ErrNotFound) {
 		t.Fatalf("attacker delete should be ErrNotFound, got %v", err)
 	}
-	if err := st.DeleteCollection(ctx, "c1", owner); err != nil {
+	if err := st.DeleteCollection(ctx, "c1", owner, ""); err != nil {
 		t.Fatalf("owner delete: %v", err)
 	}
 }
