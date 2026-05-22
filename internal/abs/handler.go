@@ -2110,14 +2110,18 @@ func (h *Handler) handlePatchProgress(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	next := store.Progress{
-		UserID:         a.UserID,
-		BookID:         itemID,
-		CurrentSeconds: cur.CurrentSeconds,
-		ProgressPct:    cur.ProgressPct,
-		IsFinished:     cur.IsFinished,
+		UserID:          a.UserID,
+		BookID:          itemID,
+		CurrentSeconds:  cur.CurrentSeconds,
+		DurationSeconds: cur.DurationSeconds,
+		ProgressPct:     cur.ProgressPct,
+		IsFinished:      cur.IsFinished,
 	}
 	if body.CurrentTime != nil {
 		next.CurrentSeconds = int(*body.CurrentTime)
+	}
+	if body.Duration != nil {
+		next.DurationSeconds = int(*body.Duration)
 	}
 	if body.Progress != nil {
 		next.ProgressPct = float32(*body.Progress)
