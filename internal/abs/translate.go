@@ -115,18 +115,132 @@ type Metadata struct {
 	Genres        []string    `json:"genres,omitempty"`
 }
 
-// AudioTrack is a single playable file. StartOffset is the cumulative
-// duration (in seconds) of all preceding tracks — the audiobookshelf-app
-// audio player uses it to map a global playback position onto an individual
-// file. Missing startOffset leaves the player stuck in BUFFERING after
-// load because it can't compute where the file sits in the global timeline.
+// AudioTrack is a single playable file as the ABS mobile client expects to
+// see it. The shape is rich because the official audiobookshelf-app's Vue
+// layer reads many fields off each track — ino + metadata for download URL
+// construction and offline-cache decisions, bitRate / channels / codec /
+// format for the "Now Playing" detail UI, embeddedCoverArt for whether to
+// fall back to the item-level cover, metaTags for ID3-style display. A
+// missing key on any of those code paths makes the player silently abort
+// the audio load (the "spinner forever" we kept chasing before).
+//
+// The same struct is emitted by both translate.go's ToLibraryItem (the
+// /api/items/{id} response) AND handler.go's handlePlay (the /play
+// response) so that downloads built off either shape resolve to the same
+// ino. Defaults (bitRate=128000, channels=2, channelLayout="stereo",
+// timeBase="1/14112000", language=nil) come from the same defaults
+// booklore-ng's working implementation emits.
 type AudioTrack struct {
-	Index       int     `json:"index"`
-	StartOffset float64 `json:"startOffset"`
-	ContentURL string  `json:"contentUrl"`
-	MimeType   string  `json:"mimeType"`
-	Duration   float64 `json:"duration"`
-	Codec      string  `json:"codec"`
+	Index                int                 `json:"index"`
+	Ino                  string              `json:"ino"`
+	Metadata             *AudioTrackMetadata `json:"metadata,omitempty"`
+	AddedAt              int64               `json:"addedAt,omitempty"`
+	UpdatedAt            int64               `json:"updatedAt,omitempty"`
+	TrackNumFromMeta     *int                `json:"trackNumFromMeta"`
+	DiscNumFromMeta      *int                `json:"discNumFromMeta"`
+	TrackNumFromFilename *int                `json:"trackNumFromFilename"`
+	DiscNumFromFilename  *int                `json:"discNumFromFilename"`
+	ManuallyVerified     bool                `json:"manuallyVerified"`
+	Exclude              bool                `json:"exclude"`
+	Error                *string             `json:"error"`
+	Format               string              `json:"format,omitempty"`
+	Duration             float64             `json:"duration"`
+	BitRate              int                 `json:"bitRate,omitempty"`
+	Language             *string             `json:"language"`
+	Codec                string              `json:"codec,omitempty"`
+	TimeBase             string              `json:"timeBase,omitempty"`
+	Channels             int                 `json:"channels,omitempty"`
+	ChannelLayout        string              `json:"channelLayout,omitempty"`
+	Chapters             []ChapterABS        `json:"chapters,omitempty"`
+	EmbeddedCoverArt     any                 `json:"embeddedCoverArt"`
+	MetaTags             map[string]string   `json:"metaTags,omitempty"`
+	MimeType             string              `json:"mimeType"`
+	Title                string              `json:"title,omitempty"`
+	StartOffset          float64             `json:"startOffset"`
+	ContentURL           string              `json:"contentUrl"`
+}
+
+// AudioTrackMetadata is the file-level metadata block nested inside each
+// AudioTrack. The mobile downloader reads filename/ext to name the local
+// copy, size to budget storage, and the mtime fields for cache invalidation.
+type AudioTrackMetadata struct {
+	Filename    string `json:"filename"`
+	Ext         string `json:"ext"`
+	Path        string `json:"path"`
+	RelPath     string `json:"relPath"`
+	Size        int64  `json:"size"`
+	MtimeMs     int64  `json:"mtimeMs"`
+	CtimeMs     int64  `json:"ctimeMs"`
+	BirthtimeMs int64  `json:"birthtimeMs"`
+}
+
+// buildAudioTracks is the canonical builder for the AudioTrack slice.
+// Both translate.ToLibraryItem (item detail) and handler.handlePlay (play
+// session) call this so the ino, metadata, and codec fields are identical
+// on both response shapes. Item detail downloads built off the ino in
+// /api/items/{id} resolve to the same backend file as the ino in /play.
+//
+// urlFor receives the 1-based wire index and returns the contentUrl to
+// embed. Callers supply different URL functions (signed session URL for
+// /play, plain /api/items/{id}/file/{ino}/download for item detail).
+func buildAudioTracks(d backend.AudiobookDetail, urlFor func(wireIdx int, ino string) string) []AudioTrack {
+	tracks := make([]AudioTrack, 0, len(d.Files))
+	var cumulative float64
+	for _, f := range d.Files {
+		wireIdx := f.Index + 1
+		// Duration fallback: see handler.handlePlay's comment for the
+		// underlying mobile-player bug; if we leave the matching track
+		// at duration=0 the spinner runs forever.
+		trackDuration := float64(f.DurationSeconds)
+		if trackDuration <= 0 && len(d.Files) == 1 && d.DurationSeconds > 0 {
+			trackDuration = float64(d.DurationSeconds)
+		}
+		ino := trackInoFor(d.ID, f.Index)
+		ext := extForFile(f)
+		mime := f.MimeType
+		if mime == "" {
+			mime = mimeOf(ext)
+		}
+		filename := d.ID + ext
+		embeddedCover := any(nil)
+		if d.CoverPath != "" || d.CoverURL != "" || d.HasCover {
+			embeddedCover = "yes"
+		}
+		fileTitle := strings.TrimSuffix(filename, ext)
+		tracks = append(tracks, AudioTrack{
+			Index: wireIdx,
+			Ino:   ino,
+			Metadata: &AudioTrackMetadata{
+				Filename:    filename,
+				Ext:         ext,
+				Path:        filename,
+				RelPath:     filename,
+				Size:        f.SizeBytes,
+				MtimeMs:     d.UpdatedAtMs,
+				CtimeMs:     d.AddedAtMs,
+				BirthtimeMs: d.AddedAtMs,
+			},
+			AddedAt:          d.AddedAtMs,
+			UpdatedAt:        d.UpdatedAtMs,
+			ManuallyVerified: false,
+			Exclude:          false,
+			Format:           strings.ToUpper(strings.TrimPrefix(ext, ".")),
+			Duration:         trackDuration,
+			BitRate:          128000,
+			Codec:            firstNonEmpty(f.Format, "mp3"),
+			TimeBase:         "1/14112000",
+			Channels:         2,
+			ChannelLayout:    "stereo",
+			EmbeddedCoverArt: embeddedCover,
+			MetaTags:         map[string]string{},
+			MimeType:         mime,
+			Title:            fileTitle,
+			StartOffset:      cumulative,
+			ContentURL:       urlFor(wireIdx, ino),
+		})
+		cumulative += trackDuration
+	}
+	return tracks
 }
 
 // ChapterABS is the ABS chapter shape (`start`/`end` in seconds, float).
@@ -157,38 +271,16 @@ func ToLibraryItem(d backend.AudiobookDetail, contentURLFn func(int) string) Lib
 		}}
 	}
 
-	// ABS uses 1-based file indexing on the wire (real ABS server
-	// initializes index at 1 in LibraryItemController.js:500). The mobile
-	// audio player does `track.index || 1` (AbsAudioPlayer.js:258), so
-	// emitting our backend's 0-based index makes the player silently
-	// substitute 1 — and any book whose backend index 0 doesn't match
-	// backend index 1 then 404s at the stream step and the spinner runs
-	// forever. Translate to 1-based at the wire boundary; handlePublicTrack
-	// subtracts 1 again when calling back into the backend.
-	//
-	// Duration fallback: if a file's own duration is 0, fall back to the
-	// book-level total when there's only one file. The mobile player's
-	// currentTrack-finder fails (and the spinner runs forever) when every
-	// track has duration 0. Same fix booklore-ng applies in its play
-	// route — see handler.handlePlay's comment for the full story.
-	tracks := make([]AudioTrack, len(d.Files))
-	var cumulative float64
-	for i, f := range d.Files {
-		wireIdx := f.Index + 1
-		trackDuration := float64(f.DurationSeconds)
-		if trackDuration <= 0 && len(d.Files) == 1 && d.DurationSeconds > 0 {
-			trackDuration = float64(d.DurationSeconds)
-		}
-		tracks[i] = AudioTrack{
-			Index:       wireIdx,
-			StartOffset: cumulative,
-			MimeType:    f.MimeType,
-			Codec:       f.Format,
-			Duration:    trackDuration,
-			ContentURL:  contentURLFn(wireIdx),
-		}
-		cumulative += trackDuration
-	}
+	// Use the shared builder so item-detail and /play emit the same
+	// rich shape — same ino, same metadata, same codec/format. Mobile
+	// constructs download URLs off the ino in whichever response it has
+	// first; if the two shapes disagreed, downloads would break.
+	tracks := buildAudioTracks(d, func(wireIdx int, _ string) string {
+		// Item-detail callers pass a content URL function that knows
+		// nothing about playback sessions. We honour their wireIdx so
+		// the link still resolves through file_handler.handleItemFile.
+		return contentURLFn(wireIdx)
+	})
 	chapters := make([]ChapterABS, len(d.Chapters))
 	for i, c := range d.Chapters {
 		chapters[i] = ChapterABS{

@@ -1373,18 +1373,18 @@ func (h *Handler) handlePlay(w http.ResponseWriter, r *http.Request) {
 	// third-party readers) read the contentUrl, so we still emit a
 	// signed one.
 	baseURL := h.absBaseURL(r)
-	urlFor := func(wireIdx int) string {
+	urlFor := func(wireIdx int, _ string) string {
 		tok, _ := IssueSessionToken(cfg.ABSJWTSecret, a.UserID, sessionID, encodedBookID, wireIdx, 6*time.Hour)
 		return baseURL +
 			"/abs/public/session/" + sessionID + "/track/" + strconv.Itoa(wireIdx) +
 			"?token=" + tok
 	}
-	audioTracks := buildPlayAudioTracks(d, encodedBookID, urlFor)
+	audioTracks := buildAudioTracks(d, urlFor)
 	for _, t := range audioTracks {
-		if dur, ok := t["duration"].(float64); !ok || dur <= 0 {
+		if t.Duration <= 0 {
 			h.logger.Warn("abs /play: zero track duration",
 				"book_id", backendBookID,
-				"wire_idx", t["index"],
+				"wire_idx", t.Index,
 				"file_count", len(d.Files),
 				"book_duration", d.DurationSeconds,
 			)
@@ -1409,9 +1409,7 @@ func (h *Handler) handlePlay(w http.ResponseWriter, r *http.Request) {
 
 	totalDuration := float64(0)
 	for _, t := range audioTracks {
-		if dur, ok := t["duration"].(float64); ok {
-			totalDuration += dur
-		}
+		totalDuration += t.Duration
 	}
 	if totalDuration <= 0 {
 		totalDuration = float64(d.DurationSeconds)

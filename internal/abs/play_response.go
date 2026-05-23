@@ -3,7 +3,6 @@ package abs
 import (
 	"crypto/md5"
 	"encoding/hex"
-	"path"
 	"strconv"
 	"strings"
 
@@ -185,84 +184,6 @@ func buildPlayMediaMetadata(d backend.AudiobookDetail) map[string]any {
 	}
 }
 
-// buildPlayAudioTracks builds the audioTracks[] array with the full set
-// of fields the mobile client reads — Vue components access bitRate,
-// codec, channels, metaTags, format, title, etc. and a missing key on
-// any of those silently aborts the audio loader.
-//
-// wireIdxToBackend is the convention from handlePublicTrack: the mobile
-// app sends 1-based track indexes (ABS LibraryItemController.js:500)
-// and we subtract 1 when calling the backend. urlFor returns the
-// session-scoped URL with the signed session-JWT in the query string.
-func buildPlayAudioTracks(d backend.AudiobookDetail, bookID string, urlFor func(wireIdx int) string) []map[string]any {
-	tracks := make([]map[string]any, 0, len(d.Files))
-	var cumulative float64
-	for _, f := range d.Files {
-		wireIdx := f.Index + 1
-		// Duration fallback: see handlePlay's comment block for why this
-		// matters. The mobile player's findIndex needs a non-zero
-		// duration on the matching track or the spinner runs forever.
-		trackDuration := float64(f.DurationSeconds)
-		if trackDuration <= 0 && len(d.Files) == 1 && d.DurationSeconds > 0 {
-			trackDuration = float64(d.DurationSeconds)
-		}
-		ext := extForFile(f)
-		mime := f.MimeType
-		if mime == "" {
-			mime = mimeOf(ext)
-		}
-		filename := bookID + ext
-		ino := trackInoFor(bookID, f.Index)
-		fileTitle := strings.TrimSuffix(path.Base(filename), ext)
-		// embeddedCoverArt is a presence sentinel ("yes" or nil) — not a
-		// blob. Mobile keys offline-cache decisions off this.
-		embeddedCover := any(nil)
-		if d.CoverPath != "" || d.CoverURL != "" || d.HasCover {
-			embeddedCover = "yes"
-		}
-		tracks = append(tracks, map[string]any{
-			"index": wireIdx,
-			"ino":   ino,
-			"metadata": map[string]any{
-				"filename":    filename,
-				"ext":         ext,
-				"path":        filename,
-				"relPath":     filename,
-				"size":        f.SizeBytes,
-				"mtimeMs":     d.UpdatedAtMs,
-				"ctimeMs":     d.AddedAtMs,
-				"birthtimeMs": d.AddedAtMs,
-			},
-			"addedAt":               d.AddedAtMs,
-			"updatedAt":             d.UpdatedAtMs,
-			"trackNumFromMeta":      nil,
-			"discNumFromMeta":       nil,
-			"trackNumFromFilename":  nil,
-			"discNumFromFilename":   nil,
-			"manuallyVerified":      false,
-			"exclude":               false,
-			"error":                 nil,
-			"format":                strings.ToUpper(strings.TrimPrefix(ext, ".")),
-			"duration":              trackDuration,
-			"bitRate":               128000,
-			"language":              nil,
-			"codec":                 firstNonEmpty(f.Format, "mp3"),
-			"timeBase":              "1/14112000",
-			"channels":              2,
-			"channelLayout":         "stereo",
-			"chapters":              []any{},
-			"embeddedCoverArt":      embeddedCover,
-			"metaTags":              map[string]any{},
-			"mimeType":              mime,
-			"title":                 fileTitle,
-			"startOffset":           cumulative,
-			"contentUrl":            urlFor(wireIdx),
-		})
-		cumulative += trackDuration
-	}
-	return tracks
-}
-
 // buildPlayLibraryItem builds the playbackSession.libraryItem nested
 // object. Mobile components read libraryItem.media.tracks /
 // libraryItem.media.metadata / libraryItem.libraryFiles for offline
@@ -273,7 +194,7 @@ func buildPlayLibraryItem(
 	lib store.PortalLibrary,
 	bookID string,
 	mediaMetadata map[string]any,
-	audioTracks []map[string]any,
+	audioTracks []AudioTrack,
 	chapters []map[string]any,
 	totalDuration float64,
 ) map[string]any {
@@ -282,20 +203,18 @@ func buildPlayLibraryItem(
 	for _, f := range d.Files {
 		totalSize += f.SizeBytes
 	}
-	if len(audioTracks) > 0 {
-		if s, ok := audioTracks[0]["ino"].(string); ok && s != "" {
-			firstIno = s
-		}
+	if len(audioTracks) > 0 && audioTracks[0].Ino != "" {
+		firstIno = audioTracks[0].Ino
 	}
 	libraryFiles := make([]map[string]any, 0, len(audioTracks))
 	for _, t := range audioTracks {
 		libraryFiles = append(libraryFiles, map[string]any{
-			"ino":              t["ino"],
-			"metadata":         t["metadata"],
-			"isSupplementary":  false,
-			"addedAt":          t["addedAt"],
-			"updatedAt":        t["updatedAt"],
-			"fileType":         "audio",
+			"ino":             t.Ino,
+			"metadata":        t.Metadata,
+			"isSupplementary": false,
+			"addedAt":         t.AddedAt,
+			"updatedAt":       t.UpdatedAt,
+			"fileType":        "audio",
 		})
 	}
 	coverPath := d.CoverPath

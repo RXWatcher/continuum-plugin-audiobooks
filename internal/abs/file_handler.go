@@ -22,12 +22,14 @@ import (
 // streaming variant uses ?token= because AVPlayer doesn't send
 // Authorization on its own requests).
 //
-// "ino" in real ABS is the file's filesystem inode. We don't expose
-// inodes — instead we treat the path segment as the file index inside
-// the audiobook detail's audioFiles[] array. Mobile gets these
-// indexes from the item-detail or play response and feeds them back
-// in URLs; the indexes are stable across feed refreshes so download
-// links don't break.
+// "ino" in real ABS is the file's filesystem inode (a large decimal
+// integer). We synthesise an MD5-derived inode-shaped string in
+// translate.go's trackInoFor — same value emitted by item-detail and
+// /play — and accept it here. To turn the ino back into a backend
+// file index we recompute trackInoFor for each file in the book's
+// detail until one matches. As a fallback we also accept a bare 0-
+// based integer in case any caller still threads the file index
+// through directly (older snapshots of our own code did this).
 //
 // Behaviour:
 //   - Mint a signed media token bound to (userID, bookID, fileIdx).
@@ -45,14 +47,44 @@ func (h *Handler) handleItemFile(w http.ResponseWriter, r *http.Request) {
 	}
 	encoded := chi.URLParam(r, "id")
 	inoStr := chi.URLParam(r, "ino")
-	fileIdx, err := strconv.Atoi(inoStr)
-	if err != nil || fileIdx < 0 {
-		http.Error(w, "ino must be a non-negative integer", http.StatusBadRequest)
-		return
-	}
 	lib, backendBookID, _, err := h.portalLibraryForBookRef(r.Context(), encoded)
 	if err != nil || lib.BackendPluginID == "" {
 		http.Error(w, "item not found", http.StatusNotFound)
+		return
+	}
+	// Resolve the requested ino back to a backend file index by
+	// recomputing trackInoFor for each known file. We need the detail
+	// anyway to validate the file exists; doing the lookup here keeps
+	// the contract symmetric with translate.buildAudioTracks (one
+	// place mints inos, one place resolves them).
+	detail, err := h.backend.GetDetail(r.Context(), "", lib.BackendPluginID, backendBookID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadGateway)
+		return
+	}
+	fileIdx := -1
+	for _, f := range detail.Files {
+		if trackInoFor(backendBookID, f.Index) == inoStr {
+			fileIdx = f.Index
+			break
+		}
+	}
+	if fileIdx < 0 {
+		// Fallback: legacy callers sometimes pass the 0-based file
+		// index directly. Accept it if it resolves to a real file.
+		if n, err := strconv.Atoi(inoStr); err == nil && n >= 0 {
+			for _, f := range detail.Files {
+				if f.Index == n {
+					fileIdx = n
+					break
+				}
+			}
+		}
+	}
+	if fileIdx < 0 {
+		h.logger.Warn("abs file proxy: unknown ino",
+			"book_id", backendBookID, "ino", inoStr, "file_count", len(detail.Files))
+		http.Error(w, "file not found", http.StatusNotFound)
 		return
 	}
 	_, cfg, err := h.targetFn(r.Context())
