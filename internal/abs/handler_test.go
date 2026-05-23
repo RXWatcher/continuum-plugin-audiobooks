@@ -252,12 +252,21 @@ func TestHandlePublicTrack_AcceptsBearerHeader(t *testing.T) {
 		t.Errorf("status=%d body=%q — bearer header must pass auth", status, body)
 	}
 
-	// Sanity check: a request with no auth at all still 401s.
-	if s, _ := f.do("GET", "/public/session/"+sid+"/track/1", nil, ""); s != 401 {
-		t.Errorf("no-auth status = %d, want 401", s)
+	// Sanity check: a request with no auth at all is ALSO allowed.
+	// Real ABS's /public/session/.../track/.../ is fully unauthenticated
+	// because HTML5 <audio src=...> can't carry an Authorization header
+	// and Capacitor doesn't intercept native audio loads. The session
+	// ID is the capability. Rejecting the no-auth case was the bug
+	// that kept the mobile spinner forever. The request gets past auth
+	// here; whatever status the backend stub returns downstream is
+	// acceptable — what matters is it is NOT 401/403.
+	if s, _ := f.do("GET", "/public/session/"+sid+"/track/1", nil, ""); s == 401 || s == 403 {
+		t.Errorf("no-auth status = %d, want anything-but-401/403 (session id is the capability)", s)
 	}
 
-	// Sanity check: bearer from a different user cannot impersonate.
+	// Sanity check: a PRESENTED but cross-user bearer still 403s. This
+	// guards the optional-validation path — credentials, when supplied,
+	// must be valid.
 	other := f.login("u-other")
 	if s, _ := f.do("GET", "/public/session/"+sid+"/track/1",
 		map[string]string{"Authorization": "Bearer " + other}, ""); s != 403 {

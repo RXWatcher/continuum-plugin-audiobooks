@@ -1608,18 +1608,18 @@ func (h *Handler) handleSessionClose(w http.ResponseWriter, r *http.Request) {
 
 // handlePublicTrack serves a session-scoped audio stream.
 //
-// Two auth shapes are accepted:
-//   - `?token=<session-jwt>` — the legacy capability we mint into the
-//     /play response's audioTracks[i].contentUrl. Self-describing: the
-//     JWT carries (userID, sessionID, fileIdx) so we can validate
-//     without consulting any other store beyond the session row.
-//   - `Authorization: Bearer <abs-access-jwt>` — what the official ABS
-//     mobile app actually sends. It IGNORES our contentUrl and builds
-//     its own /public/session/<sid>/track/<idx> URL with the bearer in
-//     the header (plugins/capacitor/AbsAudioPlayer.js:254-263 +
-//     plugins/axios.js:48-50). The first shape was unreachable from the
-//     mobile path; without this fallback, tapping play loaded a 401 and
-//     the loading spinner ran forever.
+// The session ID is the capability. Real ABS's /public/session/{sid}/track/
+// {idx} is fully unauthenticated because HTML5 <audio src=...> can't carry
+// an Authorization header and Capacitor's request interceptor doesn't run
+// on native audio loads. The ULID session ID is the unguessable token; the
+// /play call that created the row was Bearer-authenticated, so anyone the
+// session ID was handed to is implicitly the owner.
+//
+// Optional belt-and-braces: if a session-JWT lands in ?token= (e.g. the
+// audiobookshelf web client embeds our signed contentUrl directly) OR an
+// access JWT lands in Authorization (third-party tooling), validate them.
+// But the absence of either is NOT a failure — that's the mobile audio
+// path and rejecting it makes playback spin forever.
 func (h *Handler) handlePublicTrack(w http.ResponseWriter, r *http.Request) {
 	sid := chi.URLParam(r, "sid")
 	idxStr := chi.URLParam(r, "idx")
@@ -1644,6 +1644,8 @@ func (h *Handler) handlePublicTrack(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Optional validation paths — present credentials must be valid, but
+	// absence is allowed.
 	if qtok := r.URL.Query().Get("token"); qtok != "" {
 		claims, err := ParseToken(cfg.ABSJWTSecret, qtok)
 		if err != nil || claims.Type != "session" || claims.SessionID != sid || claims.FileIdx != idx {
@@ -1654,12 +1656,7 @@ func (h *Handler) handlePublicTrack(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid session token", http.StatusUnauthorized)
 			return
 		}
-	} else {
-		raw := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
-		if raw == "" {
-			http.Error(w, "unauthenticated", http.StatusUnauthorized)
-			return
-		}
+	} else if raw := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "); raw != "" {
 		claims, err := ParseToken(cfg.ABSJWTSecret, raw)
 		if err != nil || claims.Type != "access" {
 			http.Error(w, "invalid token", http.StatusUnauthorized)
@@ -1675,6 +1672,8 @@ func (h *Handler) handlePublicTrack(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	// else: unauthenticated request — the mobile <audio> element path.
+	// Session row existence is the capability.
 	lib, backendBookID, _, err := h.portalLibraryForBookRef(r.Context(), sess.BookID)
 	if err != nil || lib.BackendPluginID == "" {
 		http.Error(w, "no backend configured", http.StatusPreconditionFailed)
