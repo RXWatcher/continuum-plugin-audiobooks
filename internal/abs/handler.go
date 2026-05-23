@@ -222,11 +222,24 @@ func (h *Handler) absBaseURL(r *http.Request) string {
 // directly at `https://abs.example.com` (no path prefix) and have
 // every endpoint resolve, while our internal SPA continues to call
 // /abs/api/* on the same listener.
-func (h *Handler) Mount(r chi.Router) {
-	// Temporary access log while we debug mobile playback. Path-only;
-	// no query string so ?token= never lands in logs. Demote / remove
-	// once playback is settled.
-	r.Use(h.accessLog)
+func (h *Handler) Mount(parent chi.Router) {
+	// Wrap all ABS routes in their own inline group so the access-log
+	// middleware applies only to ABS traffic. r.Use() can't be called on
+	// the parent because server.Handler() may have already mounted other
+	// routes on it — chi panics with "all middlewares must be defined
+	// before routes on a mux" if a route is registered before Use(). The
+	// Group idiom creates a fresh inline mux that inherits the parent's
+	// path space, so our middleware stack is independent.
+	parent.Group(func(r chi.Router) {
+		// Temporary access log while we debug mobile playback. Path-only;
+		// no query string so ?token= never lands in logs. Demote / remove
+		// once playback is settled.
+		r.Use(h.accessLog)
+		h.mountRoutes(r)
+	})
+}
+
+func (h *Handler) mountRoutes(r chi.Router) {
 	// Auth + probe routes: real ABS puts these at server ROOT (no /api
 	// prefix). Mobile app does `${serverAddress}/login`,
 	// `${serverAddress}/status`, etc.
