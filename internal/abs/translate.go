@@ -157,16 +157,25 @@ func ToLibraryItem(d backend.AudiobookDetail, contentURLFn func(int) string) Lib
 		}}
 	}
 
+	// ABS uses 1-based file indexing on the wire (real ABS server
+	// initializes index at 1 in LibraryItemController.js:500). The mobile
+	// audio player does `track.index || 1` (AbsAudioPlayer.js:258), so
+	// emitting our backend's 0-based index makes the player silently
+	// substitute 1 — and any book whose backend index 0 doesn't match
+	// backend index 1 then 404s at the stream step and the spinner runs
+	// forever. Translate to 1-based at the wire boundary; handlePublicTrack
+	// subtracts 1 again when calling back into the backend.
 	tracks := make([]AudioTrack, len(d.Files))
 	var cumulative float64
 	for i, f := range d.Files {
+		wireIdx := f.Index + 1
 		tracks[i] = AudioTrack{
-			Index:       f.Index,
+			Index:       wireIdx,
 			StartOffset: cumulative,
 			MimeType:    f.MimeType,
 			Codec:       f.Format,
 			Duration:    float64(f.DurationSeconds),
-			ContentURL:  contentURLFn(f.Index),
+			ContentURL:  contentURLFn(wireIdx),
 		}
 		cumulative += float64(f.DurationSeconds)
 	}

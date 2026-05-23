@@ -134,15 +134,19 @@ func TestPublicTrack_ProxiesAudioBytes(t *testing.T) {
 		t.Fatalf("insert session: %v", err)
 	}
 
-	// Mint a session JWT the same way handlePlay would.
+	// Mint a session JWT the same way handlePlay would. ABS uses 1-based
+	// wire indexing for audio tracks (LibraryItemController.js:500); the
+	// handler translates back to the backend's 0-based file_idx in the
+	// upstream URL, so the URL+claim pair below uses 1 here and the
+	// backend assertion later expects file_idx=0 in the upstream path.
 	cfg, _ := f.store.GetBackendConfig(context.Background())
-	tok, err := abs.IssueSessionToken(cfg.ABSJWTSecret, "u-1", "sess-1", sess.BookID, 0, time.Hour)
+	tok, err := abs.IssueSessionToken(cfg.ABSJWTSecret, "u-1", "sess-1", sess.BookID, 1, time.Hour)
 	if err != nil {
 		t.Fatalf("issue session token: %v", err)
 	}
 
 	req := httptest.NewRequest("GET",
-		"/abs/public/session/sess-1/track/0?token="+tok, nil)
+		"/abs/public/session/sess-1/track/1?token="+tok, nil)
 	req.Header.Set("Range", "bytes=0-")
 	w := httptest.NewRecorder()
 	f.router.ServeHTTP(w, req)
@@ -172,6 +176,15 @@ func TestPublicTrack_ProxiesAudioBytes(t *testing.T) {
 	if f.gotReq.URL.Query().Get("token") == "" {
 		t.Errorf("backend received no media token; URL=%q", f.gotReq.URL.String())
 	}
+	// Wire idx 1 (what the mobile app sends per ABS convention) must hit
+	// the backend at file_idx 0 (the backend's own indexing). Spinner-
+	// forever bug: emitting 0 on the wire makes the mobile player do
+	// `0 || 1` and fetch /track/1, which then asked the backend for a
+	// file that doesn't exist. Lock the translation here so a future
+	// edit can't quietly re-emit the wire index 1-to-1 to the backend.
+	if got := f.gotReq.URL.Path; !strings.HasSuffix(got, "/0") {
+		t.Errorf("backend path = %q, want it to end with /0 (wire idx 1 → backend idx 0)", got)
+	}
 }
 
 // TestPublicTrack_RejectsSessionForOtherUser is a regression guard around
@@ -189,10 +202,11 @@ func TestPublicTrack_RejectsSessionForOtherUser(t *testing.T) {
 		t.Fatalf("insert session: %v", err)
 	}
 	cfg, _ := f.store.GetBackendConfig(context.Background())
-	// Token says u-mallory; session row says u-alice.
-	tok, _ := abs.IssueSessionToken(cfg.ABSJWTSecret, "u-mallory", "sess-mallory", sess.BookID, 0, time.Hour)
+	// Token says u-mallory; session row says u-alice. URL/claim use the
+	// 1-based wire index that real ABS clients send.
+	tok, _ := abs.IssueSessionToken(cfg.ABSJWTSecret, "u-mallory", "sess-mallory", sess.BookID, 1, time.Hour)
 	req := httptest.NewRequest("GET",
-		"/abs/public/session/sess-mallory/track/0?token="+tok, nil)
+		"/abs/public/session/sess-mallory/track/1?token="+tok, nil)
 	w := httptest.NewRecorder()
 	f.router.ServeHTTP(w, req)
 	if w.Code != http.StatusUnauthorized {

@@ -1340,12 +1340,21 @@ func (h *Handler) handlePlay(w http.ResponseWriter, r *http.Request) {
 	tracks := make([]AudioTrack, len(d.Files))
 	var cumulative float64
 	for i, f := range d.Files {
-		tok, _ := IssueSessionToken(cfg.ABSJWTSecret, a.UserID, sessionID, encodedBookID, f.Index, 6*time.Hour)
+		// ABS uses 1-based file indexing on the wire (real ABS server
+		// initializes the index at 1 in LibraryItemController.js:500).
+		// The mobile audio player does `track.index || 1` at
+		// AbsAudioPlayer.js:258, which silently maps our 0-based index
+		// to 1 and then fetches a file the backend doesn't have →
+		// 502 → spinner forever. Emit 1-based on the wire (URL +
+		// session-token claim + AudioTrack.Index) and convert back to
+		// 0-based at the backend boundary in handlePublicTrack.
+		wireIdx := f.Index + 1
+		tok, _ := IssueSessionToken(cfg.ABSJWTSecret, a.UserID, sessionID, encodedBookID, wireIdx, 6*time.Hour)
 		trackURL := baseURL +
-			"/abs/public/session/" + sessionID + "/track/" + strconv.Itoa(f.Index) +
+			"/abs/public/session/" + sessionID + "/track/" + strconv.Itoa(wireIdx) +
 			"?token=" + tok
 		tracks[i] = AudioTrack{
-			Index:       f.Index,
+			Index:       wireIdx,
 			StartOffset: cumulative,
 			ContentURL:  trackURL,
 			MimeType:    f.MimeType,
@@ -1520,6 +1529,11 @@ func (h *Handler) handleSessionClose(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) handlePublicTrack(w http.ResponseWriter, r *http.Request) {
 	sid := chi.URLParam(r, "sid")
 	idxStr := chi.URLParam(r, "idx")
+	// URL idx is the ABS 1-based wire index (see handlePlay /
+	// translate.ToLibraryItem for the convention). The session-token
+	// FileIdx claim and the URL idx are both 1-based; the backend's
+	// stream route is 0-based, so we subtract one when minting the
+	// media token and when building the backend path below.
 	idx, err := strconv.Atoi(idxStr)
 	if err != nil {
 		http.Error(w, "idx must be int", http.StatusBadRequest)
@@ -1589,12 +1603,17 @@ func (h *Handler) handlePublicTrack(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "media signing not configured", http.StatusServiceUnavailable)
 		return
 	}
-	mediaTok, err := mediatoken.Mint(cfg.MediaSigningSecret, sess.UserID, backendBookID, idx)
+	backendIdx := idx - 1
+	if backendIdx < 0 {
+		http.Error(w, "idx out of range", http.StatusBadRequest)
+		return
+	}
+	mediaTok, err := mediatoken.Mint(cfg.MediaSigningSecret, sess.UserID, backendBookID, backendIdx)
 	if err != nil {
 		http.Error(w, "mint media token", http.StatusInternalServerError)
 		return
 	}
-	backendPath := "/api/v1/stream/" + neturl.PathEscape(backendBookID) + "/" + strconv.Itoa(idx) +
+	backendPath := "/api/v1/stream/" + neturl.PathEscape(backendBookID) + "/" + strconv.Itoa(backendIdx) +
 		"?token=" + neturl.QueryEscape(mediaTok)
 
 	// Forward the inbound Range header so the ABS client can seek inside

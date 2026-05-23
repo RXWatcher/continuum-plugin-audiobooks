@@ -191,7 +191,11 @@ func (h *Handler) handlePlayEpisode(w http.ResponseWriter, r *http.Request) {
 		"deviceInfo":    playPayload.DeviceInfo,
 		"serverVersion": ServerVersion,
 		"audioTracks": []map[string]any{{
-			"index":       0,
+			// ABS uses 1-based file indexing on the wire — the mobile
+			// audio player does `track.index || 1`, which silently
+			// converts a 0 to 1. See handlePlay's translate-comment
+			// for the full story. Podcasts only ever have one track.
+			"index":       1,
 			"startOffset": 0.0,
 			"contentUrl":  episode.AudioURL,
 			"mimeType":    episode.AudioMimeType,
