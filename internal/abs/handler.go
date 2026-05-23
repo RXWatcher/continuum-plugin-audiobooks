@@ -1330,14 +1330,18 @@ func (h *Handler) handlePlay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	indexes := make([]int, 0, len(d.Files))
+	fileDurations := make([]int, 0, len(d.Files))
 	for _, f := range d.Files {
 		indexes = append(indexes, f.Index)
+		fileDurations = append(fileDurations, f.DurationSeconds)
 	}
 	h.logger.Info("abs /play",
 		"book_id", backendBookID,
 		"encoded_id", encodedBookID,
 		"file_count", len(d.Files),
 		"backend_indexes", indexes,
+		"file_durations", fileDurations,
+		"book_duration", d.DurationSeconds,
 	)
 	sessionID := ulid.Make().String()
 	// ProfileID is required on insert: the ABSSession row is read back
@@ -1378,6 +1382,34 @@ func (h *Handler) handlePlay(w http.ResponseWriter, r *http.Request) {
 		// session-token claim + AudioTrack.Index) and convert back to
 		// 0-based at the backend boundary in handlePublicTrack.
 		wireIdx := f.Index + 1
+		// Duration fallback: if the file's own duration is missing or
+		// zero, the mobile player's currentTrack-finder
+		// (AbsAudioPlayer.js:24-28) does
+		//   findIndex(t => floor(t.startOffset) <= startTime &&
+		//                  floor(t.startOffset + t.duration) > startTime)
+		// which fails when t.duration is 0 (the second clause becomes
+		// startOffset > startTime, false for startTime=0). The player
+		// then sits at currentTrack=audioTracks[0] but never enters
+		// `canplay` because there's nothing to play — spinner forever.
+		// Booklore-ng has the same bug and fixes it by extracting
+		// duration from the file directly (booklore /api/abs/api/items/
+		// [id]/play/route.ts:118-139). We don't have file access, but
+		// for single-file audiobooks the book-level d.DurationSeconds
+		// is the same value, so fall back to that. For multi-file
+		// books with a zero file duration, we don't have a safe per-
+		// file fallback — log a warning so the catalog can be fixed.
+		trackDuration := float64(f.DurationSeconds)
+		if trackDuration <= 0 && len(d.Files) == 1 && d.DurationSeconds > 0 {
+			trackDuration = float64(d.DurationSeconds)
+		}
+		if trackDuration <= 0 {
+			h.logger.Warn("abs /play: zero track duration",
+				"book_id", backendBookID,
+				"file_idx", f.Index,
+				"file_count", len(d.Files),
+				"book_duration", d.DurationSeconds,
+			)
+		}
 		tok, _ := IssueSessionToken(cfg.ABSJWTSecret, a.UserID, sessionID, encodedBookID, wireIdx, 6*time.Hour)
 		trackURL := baseURL +
 			"/abs/public/session/" + sessionID + "/track/" + strconv.Itoa(wireIdx) +
@@ -1387,10 +1419,10 @@ func (h *Handler) handlePlay(w http.ResponseWriter, r *http.Request) {
 			StartOffset: cumulative,
 			ContentURL:  trackURL,
 			MimeType:    f.MimeType,
-			Duration:    float64(f.DurationSeconds),
+			Duration:    trackDuration,
 			Codec:       f.Format,
 		}
-		cumulative += float64(f.DurationSeconds)
+		cumulative += trackDuration
 	}
 	h.publish(a.UserID, "user_session_open", map[string]any{
 		"id":            sessionID,

@@ -165,19 +165,29 @@ func ToLibraryItem(d backend.AudiobookDetail, contentURLFn func(int) string) Lib
 	// backend index 1 then 404s at the stream step and the spinner runs
 	// forever. Translate to 1-based at the wire boundary; handlePublicTrack
 	// subtracts 1 again when calling back into the backend.
+	//
+	// Duration fallback: if a file's own duration is 0, fall back to the
+	// book-level total when there's only one file. The mobile player's
+	// currentTrack-finder fails (and the spinner runs forever) when every
+	// track has duration 0. Same fix booklore-ng applies in its play
+	// route — see handler.handlePlay's comment for the full story.
 	tracks := make([]AudioTrack, len(d.Files))
 	var cumulative float64
 	for i, f := range d.Files {
 		wireIdx := f.Index + 1
+		trackDuration := float64(f.DurationSeconds)
+		if trackDuration <= 0 && len(d.Files) == 1 && d.DurationSeconds > 0 {
+			trackDuration = float64(d.DurationSeconds)
+		}
 		tracks[i] = AudioTrack{
 			Index:       wireIdx,
 			StartOffset: cumulative,
 			MimeType:    f.MimeType,
 			Codec:       f.Format,
-			Duration:    float64(f.DurationSeconds),
+			Duration:    trackDuration,
 			ContentURL:  contentURLFn(wireIdx),
 		}
-		cumulative += float64(f.DurationSeconds)
+		cumulative += trackDuration
 	}
 	chapters := make([]ChapterABS, len(d.Chapters))
 	for i, c := range d.Chapters {
